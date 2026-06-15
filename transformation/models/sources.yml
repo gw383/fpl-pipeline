@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+
+    tables:
+      - name: raw_players
+      - name: raw_teams
+      - name: raw_fixtures
+      - name: raw_event_live
+      - name: raw_gameweeks
+      - name: raw_manager_picks
+      - name: raw_manager_history
+      - name: raw_manager_transfers
+      - name: raw_positions
+  - name: analytics
+    schema: analytics
+    tables:
+      - name: seasons
+  - name: stg
+    schema: stg
+    tables:
+      - name: stg_player_gameweek

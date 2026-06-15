@@ -1,0 +1,44 @@
+version: 2
+
+models:
+
+  - name: stg_players
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+          - unique
+
+      - name: web_name
+        tests:
+          - not_null
+
+      - name: team_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_teams')
+              field: team_id
+
+      - name: position
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_positions')
+              field: id
+
+
+  - name: stg_player_gameweek
+
+    columns:
+      - name: player_id
+        tests:
+          - relationships:
+              to: ref('stg_players')
+              field: player_id
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - player_id
+            - gameweek_id
