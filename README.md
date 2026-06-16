@@ -1,4 +1,4 @@
-# Fantasy Premier League ELT Pipeline
+# Fantasy Premier League Data Pipeline
 
 A data engineering project that ingests Fantasy Premier League API data into SQL Server, transforms it using dbt, ready for analytics.
 
