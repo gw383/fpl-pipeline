@@ -8,7 +8,8 @@ select
     away_score                  as f_away_score,
     home_score                  as f_home_score,
     home_difficulty             as f_home_diff,
-    away_difficulty             as f_away_diff
+    away_difficulty             as f_away_diff,
+    finished                    as f_finished
 from {{ ref('stg_fixtures') }} p
 inner join {{ source('analytics', 'seasons') }} s
     on p.season = s.id

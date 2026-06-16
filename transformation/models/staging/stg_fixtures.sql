@@ -9,6 +9,7 @@ select
     team_h_score                as home_score,
     team_h_difficulty           as home_difficulty,
     team_a_difficulty           as away_difficulty,
+    finished                    as finished,
     s.id                 as season
 from {{ source('raw', 'raw_fixtures') }} p
 inner join {{ source('analytics', 'seasons') }} s
