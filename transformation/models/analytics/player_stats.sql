@@ -27,7 +27,8 @@ select
     XGI                                     as pg_XGI,
     xGa                                     as pg_xGa,
     dream_team                              as pg_dreamteam,
-    played                                  as pg_played
+    played                                  as pg_played,
+    gameweek_id                             as pg_gameweek
 
 from {{ ref('stg_player_gameweek') }} p
 inner join {{ source('analytics', 'seasons') }} s
