@@ -6,7 +6,13 @@ select
     concat(first_name,' ', second_name)     as p_full_name,
     team_id                                 as p_team,
     position                                as p_position,
-    photo                                   as p_photo
+    price                                   as p_price,
+    form                                    as p_form,
+    creativity                              as p_creativity,
+    threat                                  as p_threat,
+    influence                               as p_influence,
+    news                                    as p_news,
+    news_date                               as p_news_date
 from {{ ref('stg_players') }} p
 inner join {{ source('analytics', 'seasons') }} s
     on p.season = s.id
