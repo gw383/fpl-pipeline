@@ -263,4 +263,298 @@ where p_full_name = '{selected_player}'
 
     return pd.read_sql(query, engine)
 
+def get_star(selected_player):
+
+    query = f"""
+with last5 as
+(select top(5)
+    gw_id
+from analytics.gameweeks
+where gw_deadline_time < '2026-01-01'
+order by gw_id desc),
+
+next5 as
+(select top(5)
+    gw_id
+from analytics.gameweeks
+where gw_deadline_time > '2026-01-01'
+order by gw_id),
+
+team_results as
+(select
+    f_home_team as team_id,
+    f_gameweek as gameweek,
+    f_home_score as goals_for,
+    f_away_score as goals_against,
+    case
+        when f_home_score > f_away_score then 3
+        when f_home_score = f_away_score then 1
+        else 0
+    end as result_points,
+    case when f_away_score = 0 then 1 else 0 end as clean_sheet
+
+from analytics.fixtures
+
+left join last5
+    on f_gameweek = gw_id
+
+where f_finished = 1
+and gw_id is not null
+union all
+select
+    f_away_team as team_id,
+    f_gameweek as gameweek,
+    f_away_score as goals_for,
+    f_home_score as goals_against,
+    case
+        when f_away_score > f_home_score then 3
+        when f_away_score = f_home_score then 1
+        else 0
+    end as result_points,
+    case when f_home_score = 0 then 1 else 0 end as clean_sheet
+
+from analytics.fixtures
+
+left join last5
+    on f_gameweek = gw_id
+
+where f_finished = 1
+and gw_id is not null),
+
+team_form as
+(select
+    team_id,
+    sum(goals_for) as goals_scored,
+    sum(goals_against) as goals_conceded,
+    sum(result_points) as league_points,
+    sum(clean_sheet) as clean_sheets
+
+from team_results
+
+group by team_id),
+
+player_team_form as
+(select
+    p_team,
+    goals_scored as team_last5_goals,
+    league_points as team_last5_points,
+    goals_conceded as team_last5_conceded
+
+from analytics.players p
+
+left join team_form tf
+    on p.p_team = tf.team_id
+
+where p_full_name = '{selected_player}'),
+
+team_form_scores as
+(select
+    p_team,
+
+    case
+        when team_last5_goals / 5.0 >= 3 then 10
+        when team_last5_goals / 5.0 >= 2.7 then 9
+        when team_last5_goals / 5.0 >= 2.4 then 8
+        when team_last5_goals / 5.0 >= 2.1 then 7
+        when team_last5_goals / 5.0 >= 1.8 then 6
+        when team_last5_goals / 5.0 >= 1.5 then 5
+        when team_last5_goals / 5.0 >= 1.2 then 4
+        when team_last5_goals / 5.0 >= 0.9 then 3
+        when team_last5_goals / 5.0 >= 0.6 then 2
+        when team_last5_goals / 5.0 >= 0.3 then 1
+        else 0
+    end as goals_score,
+
+    case
+        when team_last5_conceded / 5.0 >= 2.7 then 1
+        when team_last5_conceded / 5.0 >= 2.4 then 2
+        when team_last5_conceded / 5.0 >= 2.1 then 3
+        when team_last5_conceded / 5.0 >= 1.8 then 4
+        when team_last5_conceded / 5.0 >= 1.5 then 5
+        when team_last5_conceded / 5.0 >= 1.2 then 6
+        when team_last5_conceded / 5.0 >= 0.9 then 7
+        when team_last5_conceded / 5.0 >= 0.6 then 8
+        when team_last5_conceded / 5.0 >= 0.3 then 9
+        else 10
+    end as gc_score,
+
+    case
+        when team_last5_points = 15 then 10
+        when team_last5_points = 13 then 9
+        when team_last5_points = 12 then 8
+        when team_last5_points = 11 then 7
+        when team_last5_points in (9,10) then 6
+        when team_last5_points in (7,8) then 5
+        when team_last5_points in (5,6) then 4
+        when team_last5_points in (3,4) then 3
+        when team_last5_points = 2 then 2
+        when team_last5_points = 1 then 1
+        else 0
+    end as points_score
+
+from player_team_form),
+
+team_form_final as
+(select
+    tfs.p_team,
+
+    case
+        when pl.p_position in (3,4) then
+            (goals_score * 0.5)
+            +
+            (points_score * 0.5)
+
+        when pl.p_position in (1,2) then
+            (gc_score * 0.5)
+            +
+            (points_score * 0.5)
+
+        else 0
+    end as team_form_score
+
+from team_form_scores tfs
+
+left join analytics.players pl
+    on tfs.p_team = pl.p_team
+
+where pl.p_full_name = '{selected_player}'),
+
+upcoming_fixtures as
+(select
+    case
+        when f_home_team = p_team then f_away_team
+        else f_home_team
+    end as opponent,
+
+    case
+        when f_home_team = p_team then f_home_diff
+        else f_away_diff
+    end as difficulty
+
+from analytics.fixtures
+
+cross join analytics.players
+
+left join next5
+    on f_gameweek = gw_id
+
+where p_full_name = '{selected_player}'
+and next5.gw_id is not null
+and (f_home_team = p_team or f_away_team = p_team)),
+
+opponent_form as
+(select
+    avg(cast(goals_scored as decimal(10,2))) as opponent_goals_scored,
+    avg(cast(goals_conceded as decimal(10,2))) as opponent_goals_conceded,
+    avg(cast(league_points as decimal(10,2))) as opponent_points,
+    avg(cast(difficulty as decimal(10,2))) as opponent_fixture_difficulty
+
+from upcoming_fixtures u
+
+left join team_form tf
+    on u.opponent = tf.team_id),
+
+player_metrics as
+(select
+    p_full_name as player,
+    p.p_team,
+    p_position,
+
+    sum(pg_points) as total_points,
+case
+    when sum(case when l.gw_id is not null then pg_minutes else 0 end) < 30
+        then 0
+
+    else
+        coalesce(
+            sum(case when l.gw_id is not null then pg_points else 0 end)
+            * 90.0 /
+            nullif(
+                sum(case when l.gw_id is not null then pg_minutes else 0 end),
+                0
+            ),
+            0
+        )
+end as last5_form,
+
+    tf.team_form_score,
+    ofm.opponent_goals_scored,
+    ofm.opponent_fixture_difficulty,
+    ofm.opponent_goals_conceded,
+    ofm.opponent_points
+from analytics.players p
+left join analytics.player_stats
+    on p_id = pg_id
+left join analytics.gameweeks gw
+    on gw.gw_id = pg_gameweek
+left join last5 l
+    on gw.gw_id = l.gw_id
+left join team_form_final tf
+    on p.p_team = tf.p_team
+cross join opponent_form ofm
+
+group by
+    p_full_name,
+    p.p_team,
+    p_position,
+    tf.team_form_score,
+    ofm.opponent_goals_scored,
+    ofm.opponent_goals_conceded,
+    ofm.opponent_points,
+    ofm.opponent_fixture_difficulty),
+
+season_percentiles as
+(
+select
+    pm.*,
+    case when total_points = 0 then 0
+        else percent_rank() over(order by total_points) * 10 end as season_form_score
+from player_metrics pm
+where total_points > 0
+),
+
+form_scores as
+(
+select
+    pm.*,
+
+    coalesce(sp.season_form_score,0) as season_form_score,
+
+    case
+        when pm.last5_form + 3 > 10 then 10
+        when pm.last5_form = 0 then 0
+        else pm.last5_form + 3
+    end as last5_form_score
+from player_metrics pm
+left join season_percentiles sp
+    on pm.player = sp.player
+    and pm.p_team = sp.p_team)
+
+select
+    player,
+    p_position,
+    round(season_form_score,2) as season_form_score,
+    round(last5_form_score,2) as last5_form_score,
+    round(team_form_score,2) as team_form_score,
+
+    round(
+        10 - ((opponent_fixture_difficulty - 2.5) * 4)
+    ,2) as opponent_difficulty_score,
+
+    round(
+        (season_form_score * 0.50) +
+        (last5_form_score * 0.25) +
+        (team_form_score * 0.10) +
+        ((10 - ((opponent_fixture_difficulty - 2.5) * 4)) * 0.15)
+    ,2) as star
+
+from form_scores
+
+where player = '{selected_player}';
+        """
+
+    return pd.read_sql(query, engine)
+
+
+
 

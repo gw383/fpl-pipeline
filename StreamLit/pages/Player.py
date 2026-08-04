@@ -4,18 +4,21 @@ import base64
 import plotly.express as px
 from queries.player_info import (
     get_players,
-    get_player_info)
+    get_player_info,
+    get_next_5)
 from queries.player_stats import (
     get_player_stats,
     get_best_stats,
     get_rank_metrics,
-    get_gwk)
+    get_gwk,
+    get_star)
 from database import engine
 from charts.points_breakdown import points_breakdown_chart
 from charts.player_radar import player_radar
 from charts.minutes_donut import minutes_donut_chart
 from charts.gameweek_trend import gameweek_trend
 from components.metric_card import metric_card
+from components.fixture_card import fixture_card
 
 # Config
 st.set_page_config(
@@ -106,6 +109,7 @@ div[aria-selected="true"] {
 unsafe_allow_html=True)
 
 
+
 # Query imports and definining columns
 
 players = get_players()
@@ -126,6 +130,9 @@ with col2:
 player_info = get_player_info(
     selected_player)
 
+next_5 = get_next_5(
+    selected_player)
+
 player_data = get_player_stats(
     selected_player,
     range_filter)
@@ -137,6 +144,9 @@ gwk_points = get_gwk(
 ranks = get_rank_metrics(
     selected_player,
     range_filter)
+
+star_ranking = get_star(
+    selected_player)
 
 
 primary = player_info.iloc[0]["primary"]
@@ -151,7 +161,6 @@ threat = float(player_info.iloc[0]["form"])
 influence = float(player_info.iloc[0]["form"])
 news = player_info.iloc[0]["news"]
 news_date = player_info.iloc[0]["news_date"]
-
 
 
 points = int(player_data.iloc[0]["points"])
@@ -235,6 +244,29 @@ else: defcons_p90 = round(defcons * 90 / minutes, 1)
 if minutes == 0:
     clean_sheets_p90 = 0
 else: clean_sheets_p90 = round(clean_sheets * 90 / minutes, 1)
+
+star = float(star_ranking.iloc[0]["star"])
+
+def recommendation_stars(star):
+    """
+    Convert recommendation score out of 10 into 5 star rating.
+    Supports half stars.
+    """
+
+    stars = star / 2
+
+    full_stars = int(stars)
+    half_star = stars - full_stars >= 0.25
+
+    empty_stars = 5 - full_stars - int(half_star)
+
+    return (
+        "★" * full_stars +
+        ("⯪" if half_star else "") +
+        "☆" * empty_stars
+    )
+
+star_display = recommendation_stars(star)
 
 # Player banner
 
@@ -359,7 +391,14 @@ f"""
             font-weight:700;
             line-height:1.05;
         ">
-            {selected_player}
+            {selected_player} 
+            <span style="
+                font-size:28px;
+                margin-left:12px;
+                letter-spacing:2px;
+            ">
+                {star_display} <span style="font-size:20px;">{star:.1f}/10</span>
+            </span>
         </h1>
 
         <p style="
@@ -551,4 +590,6 @@ with c4:
         use_container_width=True,
         key="gameweek_trend")
 
+
+fixture_card(next_5)
 
