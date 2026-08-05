@@ -555,6 +555,241 @@ where player = '{selected_player}';
 
     return pd.read_sql(query, engine)
 
+def get_star_top20():
+
+    query = f"""
+with last5 as
+(
+    select top(5)
+        gw_id
+    from analytics.gameweeks
+    where gw_deadline_time < '2026-01-01'
+    order by gw_id desc
+),
+
+
+team_results as
+(
+    select
+        f_home_team as team_id,
+        f_home_score as goals_scored,
+        f_away_score as goals_conceded,
+
+        case
+            when f_home_score > f_away_score then 3
+            when f_home_score = f_away_score then 1
+            else 0
+        end as points
+
+    from analytics.fixtures
+    where f_finished = 1
+    and f_gameweek in (select gw_id from last5)
+
+
+    union all
+
+
+    select
+        f_away_team,
+        f_away_score,
+        f_home_score,
+
+        case
+            when f_away_score > f_home_score then 3
+            when f_away_score = f_home_score then 1
+            else 0
+        end
+
+    from analytics.fixtures
+    where f_finished = 1
+    and f_gameweek in (select gw_id from last5)
+),
+
+
+team_form as
+(
+    select
+        team_id,
+
+        sum(goals_scored) as goals_scored,
+        sum(goals_conceded) as goals_conceded,
+        sum(points) as league_points
+
+    from team_results
+    group by team_id
+),
+
+
+team_form_scores as
+(
+    select
+        team_id,
+
+        (
+            case
+                when goals_scored / 5.0 >= 3 then 10
+                when goals_scored / 5.0 >= 2.5 then 8
+                when goals_scored / 5.0 >= 2 then 6
+                when goals_scored / 5.0 >= 1.5 then 4
+                else 2
+            end
+        ) * 0.5
+
+        +
+
+        (
+            case
+                when league_points >= 13 then 10
+                when league_points >= 10 then 8
+                when league_points >= 7 then 6
+                when league_points >= 4 then 4
+                else 2
+            end
+        ) * 0.5
+
+        as team_form_score
+
+    from team_form
+),
+
+
+player_metrics as
+(
+    select
+
+        p_full_name as player,
+        p_position,
+
+        sum(pg_points) as total_points,
+
+
+        case
+            when sum(
+                case
+                    when l.gw_id is not null
+                    then pg_minutes
+                    else 0
+                end
+            ) < 30
+
+            then 0
+
+            else
+
+            coalesce(
+
+                sum(
+                    case
+                        when l.gw_id is not null
+                        then pg_points
+                        else 0
+                    end
+                )
+                * 90.0 /
+
+                nullif(
+                    sum(
+                        case
+                            when l.gw_id is not null
+                            then pg_minutes
+                            else 0
+                        end
+                    ),
+                0),
+
+            0)
+
+        end as last5_form,
+
+
+        tf.team_form_score
+
+
+    from analytics.players p
+
+    left join analytics.player_stats ps
+        on p_id = pg_id
+
+    left join analytics.gameweeks gw
+        on gw.gw_id = pg_gameweek
+
+    left join last5 l
+        on gw.gw_id = l.gw_id
+
+    left join team_form_scores tf
+        on p.p_team = tf.team_id
+
+
+    group by
+        p_full_name,
+        p_position,
+        tf.team_form_score
+),
+
+
+season_scores as
+(
+    select
+        pm.*,
+
+        case
+            when total_points = 0 then 0
+            else percent_rank()
+                over(order by total_points)
+                * 10
+        end as season_form_score
+
+
+    from player_metrics pm
+    where total_points > 0
+),
+
+
+final_scores as
+(
+    select
+
+        player,
+        p_position,
+
+        round(
+
+            (season_form_score * 0.50)
+
+            +
+
+            (case
+                    when last5_form + 3 > 10 then 10
+                    when last5_form = 0 then 0
+                    else last5_form + 3
+                end
+                * 0.25
+            )
+
+            +
+
+            (team_form_score * 0.25)
+
+        ,2) as rating
+
+
+    from season_scores
+)
+
+
+select top(20)
+
+    player,
+    p_position,
+    rating
+
+from final_scores
+
+order by rating desc;
+        """
+
+    return pd.read_sql(query, engine)
+
 
 
 
