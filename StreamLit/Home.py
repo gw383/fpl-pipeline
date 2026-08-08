@@ -1,5 +1,5 @@
 import streamlit as st
-from queries.team_data import (get_team_fixtures, get_latest_news)
+from queries.team_data import (get_team_fixtures, get_latest_news, get_best_11)
 from queries.player_stats import get_star_top20
 from components.team_fixtures import team_fixture_card
 from components.news import news_card
@@ -53,8 +53,8 @@ team_order = (
 recommendations = get_star_top20()
 
 
-c1, c2, c3 = st.columns(
-    [0.8, 1.5, 0.8],
+c1, c2, c3, c4 = st.columns(
+    [0.5, 1.75, 1.25, 1],
     gap="small"
 )
 # -------------------------------
@@ -107,11 +107,143 @@ with c1:
 
 
 
+with c2:
+
+    metric = st.selectbox(
+        "Build team based on",
+        [
+            "Points",
+            "Goals",
+            "Assists",
+            "xG",
+            "Defcons"
+        ]
+    )
+
+    metric_map = {
+        "Points": "points",
+        "Goals": "goals",
+        "Assists": "assists",
+        "xG": "xg",
+        "Defcons": "defcons"
+    }
+
+    selected_metric = metric_map[metric]
+
+    best_11 = get_best_11(selected_metric)
+    
+    st.subheader(f"Best XI — {metric}")
+
+    formation = best_11["formation"].iloc[0]
+
+    # Split players by position
+    goalkeeper = best_11[best_11["p_position"] == 1]
+    defenders = best_11[best_11["p_position"] == 2]
+    midfielders = best_11[best_11["p_position"] == 3]
+    forwards = best_11[best_11["p_position"] == 4]
+
+    def player_card(row):
+        return f"""
+        <div style="
+            text-align:center;
+            width:80px;
+            margin:auto;
+        ">
+            <div style="
+                background:#ffffff;
+                border-radius:6px;
+                padding:5px 4px;
+                box-shadow:0 1px 3px rgba(0,0,0,0.15);
+                font-size:11px;
+                font-weight:700;
+            ">
+                {row['player']}
+            </div>
+
+            <div style="
+                font-size:10px;
+                color:#777;
+                margin-top:2px;
+            ">
+                {row['metric_value']:.1f}
+            </div>
+        </div>
+        """
+
+    # Pitch
+    st.html(
+        f"""
+        <div style="
+            width:100%;
+            height:540px;
+            margin-top:5px;
+            border-radius:12px;
+            padding:20px 8px;
+            box-sizing:border-box;
+
+            background:
+                repeating-linear-gradient(
+                    0deg,
+                    #3d9147 0px,
+                    #3d9147 50px,
+                    #438f4b 50px,
+                    #438f4b 100px
+                );
+
+            display:flex;
+            flex-direction:column;
+            justify-content:space-between;
+        ">
+
+            <!-- Forwards -->
+            <div style="
+                display:flex;
+                justify-content:space-around;
+                align-items:center;
+                width:100%;
+            ">
+                {''.join(player_card(row) for _, row in forwards.iterrows())}
+            </div>
+
+            <!-- Midfielders -->
+            <div style="
+                display:flex;
+                justify-content:space-around;
+                align-items:center;
+                width:100%;
+            ">
+                {''.join(player_card(row) for _, row in midfielders.iterrows())}
+            </div>
+
+            <!-- Defenders -->
+            <div style="
+                display:flex;
+                justify-content:space-around;
+                align-items:center;
+                width:100%;
+            ">
+                {''.join(player_card(row) for _, row in defenders.iterrows())}
+            </div>
+
+            <!-- Goalkeeper -->
+            <div style="
+                display:flex;
+                justify-content:center;
+                align-items:center;
+                width:100%;
+            ">
+                {''.join(player_card(row) for _, row in goalkeeper.iterrows())}
+            </div>
+
+        </div>
+        """
+    )
+
 # -------------------------------
 # Fixtures
 # -------------------------------
 
-with c2:
+with c3:
 
     st.subheader("Fixture Difficulty")
 
@@ -206,7 +338,7 @@ with c2:
 # News
 # -------------------------------
 
-with c3:
+with c4:
 
     st.subheader("Latest News")
 
