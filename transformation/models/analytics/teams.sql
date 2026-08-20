@@ -11,3 +11,4 @@ inner join {{ source('analytics', 'seasons') }} s
     on p.season = s.id
 where cast(getdate() as date)
       between s.start_date and s.end_date;
+

@@ -13,4 +13,6 @@ select
     s.id                 as season
 from {{ source('raw', 'raw_fixtures') }} p
 inner join {{ source('analytics', 'seasons') }} s
-    on p.season = s.display_name;
+    on p.season = s.display_name
+where cast(getdate() as date)
+      between s.start_date and s.end_date;

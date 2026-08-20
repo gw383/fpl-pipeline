@@ -67,16 +67,21 @@ def get_latest_news():
 
     query = """
 select
-
     top (10)
-       p_full_name as player,
-       p_news as news,
-       p_news_date as date
-from analytics.players where p_news_date is not null and p_news <> ''
-order by p_news_date desc
+        p_full_name as player,
+        p_news as news,
+        p_news_date as date
+    from analytics.players
+    where p_news_date is not null
+      and p_news <> ''
+    order by p_news_date desc
     """
 
-    return pd.read_sql(query, engine)
+    news = pd.read_sql(query, engine)
+
+    news["date"] = pd.to_datetime(news["date"])
+
+    return news
 
 def get_best_11(metric):
 

@@ -1,8 +1,10 @@
 import streamlit as st
+import base64
 from queries.team_data import (get_team_fixtures, get_latest_news, get_best_11)
 from queries.player_stats import get_star_top20
 from components.team_fixtures import team_fixture_card
 from components.news import news_card
+
 
 
 st.set_page_config(
@@ -12,10 +14,17 @@ st.set_page_config(
 )
 
 
+pitch_path = "images/pitch.jpg"
+
+with open(pitch_path, "rb") as image_file:
+    pitch_base64 = base64.b64encode(
+        image_file.read()
+    ).decode()
+
 # ---------- Header ----------
 
 st.markdown("""
-<h1 style='margin-bottom:0;'>⚽ FPL Analytics Dashboard</h1>
+<h1 style='margin-bottom:0;'>FPL Analytics Dashboard</h1>
 <p style='font-size:20px;color:#888;margin-top:0;'>
 </p>
 """, unsafe_allow_html=True)
@@ -143,12 +152,13 @@ with c2:
     forwards = best_11[best_11["p_position"] == 4]
 
     def player_card(row):
+
         return f"""
         <div style="
             text-align:center;
             width:80px;
-            margin:auto;
         ">
+
             <div style="
                 background:#ffffff;
                 border-radius:6px;
@@ -156,17 +166,20 @@ with c2:
                 box-shadow:0 1px 3px rgba(0,0,0,0.15);
                 font-size:11px;
                 font-weight:700;
+                line-height:13px;
             ">
                 {row['player']}
             </div>
 
             <div style="
                 font-size:10px;
-                color:#777;
-                margin-top:2px;
+                font-weight:600;
+                color:white;
+                margin-top:3px;
             ">
-                {row['metric_value']:.1f}
+                {row['metric_value']:.2f}
             </div>
+
         </div>
         """
 
@@ -181,38 +194,25 @@ with c2:
             padding:20px 8px;
             box-sizing:border-box;
 
-            background:
-                repeating-linear-gradient(
-                    0deg,
-                    #3d9147 0px,
-                    #3d9147 50px,
-                    #438f4b 50px,
-                    #438f4b 100px
-                );
+            background-image:url('data:image/jpeg;base64,{pitch_base64}');
+            background-size:100% 100%;
+            background-position:center;
+            background-repeat:no-repeat;
 
             display:flex;
             flex-direction:column;
             justify-content:space-between;
         ">
 
-            <!-- Forwards -->
+            <!-- Goalkeeper -->
             <div style="
                 display:flex;
-                justify-content:space-around;
+                justify-content:center;
                 align-items:center;
                 width:100%;
+                transform:translateY(20px);
             ">
-                {''.join(player_card(row) for _, row in forwards.iterrows())}
-            </div>
-
-            <!-- Midfielders -->
-            <div style="
-                display:flex;
-                justify-content:space-around;
-                align-items:center;
-                width:100%;
-            ">
-                {''.join(player_card(row) for _, row in midfielders.iterrows())}
+                {''.join(player_card(row) for _, row in goalkeeper.iterrows())}
             </div>
 
             <!-- Defenders -->
@@ -221,19 +221,33 @@ with c2:
                 justify-content:space-around;
                 align-items:center;
                 width:100%;
+                transform:translateY(-5px);
             ">
                 {''.join(player_card(row) for _, row in defenders.iterrows())}
             </div>
 
-            <!-- Goalkeeper -->
+            <!-- Midfielders -->
             <div style="
                 display:flex;
-                justify-content:center;
+                justify-content:space-around;
                 align-items:center;
                 width:100%;
+                transform:translateY(-5px);
             ">
-                {''.join(player_card(row) for _, row in goalkeeper.iterrows())}
+                {''.join(player_card(row) for _, row in midfielders.iterrows())}
             </div>
+
+            <!-- Forwards -->
+            <div style="
+                display:flex;
+                justify-content:space-around;
+                align-items:center;
+                width:100%;
+                transform:translateY(-5px);
+            ">
+                {''.join(player_card(row) for _, row in forwards.iterrows())}
+            </div>
+
 
         </div>
         """

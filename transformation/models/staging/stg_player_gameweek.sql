@@ -16,23 +16,25 @@ select
     [stats.saves]                           as 'saves',
     [stats.bonus]                           as 'bonus_points',
     [stats.bps]                             as 'bps',
-    [stats.influence]                       as 'influence',
-    [stats.creativity]                      as 'creativity',
-    [stats.threat]                          as 'threat',
-    [stats.ict_index]                       as 'ict_index',
+    cast([stats.influence] as float)                       as 'influence',
+    cast([stats.creativity] as float)                      as 'creativity',
+    cast([stats.threat] as float)                       as 'threat',
+    cast([stats.ict_index] as float)                     as 'ict_index',
     [stats.clearances_blocks_interceptions] as 'cl_bl_ints',
     [stats.recoveries]                      as 'recoveries',
     [stats.tackles]                         as 'tackles',
     [stats.defensive_contribution]          as 'defcons',
     [stats.starts]                          as 'starts',
-    [stats.expected_goals]                  as 'xG',
-    [stats.expected_assists]                as 'xA',
-    [stats.expected_goal_involvements]      as 'XGI',
-    [stats.expected_goals_conceded]         as 'xGa',
+    cast([stats.expected_goals] as float)                 as 'xG',
+    cast([stats.expected_assists] as float)              as 'xA',
+    cast([stats.expected_goal_involvements] as float)     as 'XGI',
+    cast([stats.expected_goals_conceded] as float)       as 'xGa',
     [stats.total_points]                    as 'points',
     [stats.in_dreamteam]                    as 'dream_team',
     [stats.played]                          as 'played',
     s.id as 'season'
 from {{ source('raw', 'raw_event_live') }} p
 inner join {{ source('analytics', 'seasons') }} s
-    on p.season = s.display_name;
+    on p.season = s.display_name
+where cast(getdate() as date)
+      between s.start_date and s.end_date;
