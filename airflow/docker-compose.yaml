@@ -60,8 +60,8 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
 
-    - C:/fpl-pipeline:/opt/airflow/fpl-pipeline
-    - C:/fpl-pipeline/airflow/dbt:/home/airflow/.dbt
+    - ..:/opt/airflow/fpl-pipeline
+    - ./dbt:/home/airflow/.dbt
 
   user: "${AIRFLOW_UID:-50000}:0"
 
