@@ -1,7 +1,9 @@
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
 import pandas as pd
+import os
 
+from dotenv import load_dotenv
 from main_endpoint import main_endpoint
 from fixtures import fixtures
 from event_live import event_live
@@ -10,15 +12,20 @@ from manager_profiles import manager_profiles
 from manager_picks import manager_picks
 from manager_transfers import manager_transfers
 
+load_dotenv()
+
 connection_string = (
     "DRIVER={ODBC Driver 18 for SQL Server};"
-    "SERVER=localhost;"
+    f"SERVER={os.getenv('FPL_DB_SERVER', 'localhost')};"
     "DATABASE=FPL;"
-    "Trusted_Connection=yes;"
-    "TrustServerCertificate=yes;")
+    f"UID={os.getenv('FPL_DB_USER')};"
+    f"PWD={os.getenv('FPL_DB_PASSWORD')};"
+    "TrustServerCertificate=yes;"
+)
 
 engine = create_engine(
-    f"mssql+pyodbc:///?odbc_connect={quote_plus(connection_string)}")
+    f"mssql+pyodbc:///?odbc_connect={quote_plus(connection_string)}"
+)
 
 def run_pipeline():
 

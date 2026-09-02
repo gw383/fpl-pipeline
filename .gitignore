@@ -1,8 +1,63 @@
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+venv/
+.venv/
+env/
+ENV/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# dbt
 target/
 dbt_packages/
 logs/
-__pycache__/
-archive/
-venv/
-__init__.py
+
+# Airflow
+airflow/logs/
+airflow/airflow.db
+airflow/*.db
+
+# Airflow generated/local files
+airflow/config/
+airflow/plugins/
+
+# Build / Executables
+dist/
+build/
+*.spec
+
+# Local databases
+*.mdf
+*.ndf
+*.ldf
+*.bak
+*.db
+*.sqlite
+*.sqlite3
+
+# Data files
+data/
+raw_data/
+*.parquet
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+~$*

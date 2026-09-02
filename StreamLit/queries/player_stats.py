@@ -112,7 +112,7 @@ with player_totals as
                     where gw_deadline_time < cast(getdate() as date)
                     order by gw_id desc)))
     group by pg_id
-    having sum(pg_starts) >= 5)
+    having sum(pg_starts) >= 1)
 select
     max(points) AS max_points,
     max(bonus) AS max_bonus,
@@ -754,21 +754,21 @@ final_scores as
 
         round(
 
-            (season_form_score * 0.50)
+            coalesce((season_form_score * 0.50),0)
 
             +
 
-            (case
+            coalesce((case
                     when last5_form + 3 > 10 then 10
                     when last5_form = 0 then 0
                     else last5_form + 3
                 end
                 * 0.25
-            )
+            ),0)
 
             +
 
-            (team_form_score * 0.25)
+            coalesce((team_form_score * 0.25),0)
 
         ,2) as rating
 

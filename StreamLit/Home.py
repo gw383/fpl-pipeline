@@ -45,8 +45,19 @@ news["date"] = (
 
 # Order teams by average fixture difficulty
 
+next_5_gws = (
+    fixtures["gw"]
+    .drop_duplicates()
+    .sort_values()
+    .head(5)
+    .tolist()
+)
+
+
 team_order = (
-    fixtures
+    fixtures[
+        fixtures["gw"].isin(next_5_gws)
+    ]
     .groupby("team_name")["difficulty"]
     .mean()
     .sort_values()
@@ -107,7 +118,7 @@ with c1:
                 font-weight:700;
                 color:#333;
             ">
-                {player['rating']:.2f}
+                {player['rating'] if player['rating'] is not None else 0:.2f}
             </div>
 
         </div>

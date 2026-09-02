@@ -54,7 +54,7 @@ left join analytics.teams t
 left join analytics.gameweeks gw
     on tf.gw = gw.gw_id
 
-where gw.gw_deadline_time > '2026-04-19'
+where gw.gw_deadline_time > getdate()
 
 order by
     tf.team_id,
