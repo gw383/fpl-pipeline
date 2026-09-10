@@ -14,7 +14,7 @@ I also wanted to build something around a dataset that I have a genuine interest
 
 
 
-!\[Architecture](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/architecture.png)
+!\[Architecture](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/architecture.png "Architecture")
 
 
 
@@ -28,7 +28,7 @@ reporting layer.
 
 
 
-!\[Data Model](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dbdiagram.png)
+!\[Data Model](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dbdiagram.png "dbmodel")
 
 
 
@@ -90,21 +90,11 @@ The DAG coordinates:
 
 
 
-Python ingestion
-
-&#x20;       ↓
-
-Raw SQL Server data
-
-&#x20;       ↓
-
-dbt build
-
-&#x20;       ↓
-
-dbt tests
+Python ingestion → Raw SQL Server data → dbt build → dbt tests
 
 
+
+!\[dag](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dag.png "dag")
 
 ## Transformation
 
@@ -205,16 +195,4 @@ mart to provide an interface for exploring the FPL data.
 \- Automated pipeline execution
 
 \- Develop manager and transfer data
-
-
-
-
-
-
-
-
-
-
-
-
 
