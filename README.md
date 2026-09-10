@@ -129,7 +129,7 @@ Airflow runs inside Docker while SQL Server runs on the host machine, requiring 
 
 
 
-\- \*\*Pipeline orchestration\*\* — ingestion, transformation and testing
+\- **Pipeline orchestration** — ingestion, transformation and testing
 
 &#x20; needed to be coordinated through a single repeatable workflow.
 
