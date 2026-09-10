@@ -28,7 +28,7 @@ reporting layer.
 
 
 
-!\[Data Model](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dbdiagram.png)
+![Data Model](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dbdiagram.png "dbmodel")
 
 
 
