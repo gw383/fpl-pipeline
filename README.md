@@ -13,13 +13,7 @@ I also wanted to build something around a dataset that I have a genuine interest
 ## Architecture
 
 
-
-
-!\[Architecture](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/architecture.png "Architecture")
-
 ![Architecture](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/architecture.png "Architecture")
-
-
 
 
 
@@ -30,10 +24,6 @@ fact and dimension tables designed around the requirements of the
 
 reporting layer.
 
-
-
-
-!\[Data Model](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dbdiagram.png "dbmodel")
 
 ![Data Model](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dbdiagram.png "dbmodel")
 
@@ -97,7 +87,7 @@ The DAG coordinates:
 
 Python ingestion → Raw SQL Server data → dbt build → dbt tests
 
-!\[dag](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dag.png "dag")
+![dag](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dag.png "dag")
 
 ## Transformation
 
