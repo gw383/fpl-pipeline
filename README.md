@@ -125,7 +125,7 @@ to the architecture and implementation:
 
 
 
-Airflow runs inside Docker while SQL Server runs on the host machine, requiring environment-specificdatabase connectivity.
+\- **Docker → SQL Server connectivity** — Airflow runs inside Docker while SQL Server runs on the host machine, requiring environment-specific database connectivity.
 
 
 
