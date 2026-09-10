@@ -92,15 +92,15 @@ The DAG coordinates:
 
 Python ingestion
 
-&#x20;       ↓
+&#x20;           ↓
 
 Raw SQL Server data
 
-&#x20;       ↓
+&#x20;           ↓
 
 dbt build
 
-&#x20;       ↓
+&#x20;           ↓
 
 dbt tests
 
