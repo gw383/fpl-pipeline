@@ -125,11 +125,7 @@ to the architecture and implementation:
 
 
 
-\- \*\*Docker and SQL Server connectivity\*\* — Airflow runs inside Docker
-
-&#x20; while SQL Server runs on the host machine, requiring environment-specific
-
-&#x20; database connectivity.
+Airflow runs inside Docker while SQL Server runs on the host machine, requiring environment-specificdatabase connectivity.
 
 
 
@@ -139,13 +135,13 @@ to the architecture and implementation:
 
 
 
-\- \*\*Data modelling\*\* — the raw API data needed to be transformed into
+\- **Data modelling** — the raw API data needed to be transformed into
 
 &#x20; a dimensional model with clearly defined fact and dimension grains.
 
 
 
-\- \*\*Environment configuration\*\* — database credentials and connection
+\- **Environment configuration** — database credentials and connection
 
 &#x20; details needed to be separated from the application code while
 
@@ -153,7 +149,7 @@ to the architecture and implementation:
 
 
 
-\- \*\*Changing FPL data\*\* — fixtures, gameweeks and player data change
+\- **Changing FPL data** — fixtures, gameweeks and player data change
 
 &#x20; throughout a season, requiring the pipeline to accommodate ongoing
 
