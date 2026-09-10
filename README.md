@@ -14,7 +14,11 @@ I also wanted to build something around a dataset that I have a genuine interest
 
 
 
+<<<<<<< HEAD
 !\[Architecture](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/architecture.png "Architecture")
+=======
+![Architecture](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/architecture.png "Architecture")
+>>>>>>> b8c9ac3e19556accd0971822ed4903b08dc23b2d
 
 
 
@@ -28,7 +32,11 @@ reporting layer.
 
 
 
+<<<<<<< HEAD
 !\[Data Model](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dbdiagram.png "dbmodel")
+=======
+![Data Model](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/dbdiagram.png "dbmodel")
+>>>>>>> b8c9ac3e19556accd0971822ed4903b08dc23b2d
 
 
 
@@ -90,7 +98,23 @@ The DAG coordinates:
 
 
 
+<<<<<<< HEAD
 Python ingestion → Raw SQL Server data → dbt build → dbt tests
+=======
+Python ingestion
+
+&#x20;           ↓
+
+Raw SQL Server data
+
+&#x20;           ↓
+
+dbt build
+
+&#x20;           ↓
+
+dbt tests
+>>>>>>> b8c9ac3e19556accd0971822ed4903b08dc23b2d
 
 
 
