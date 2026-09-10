@@ -14,7 +14,7 @@ I also wanted to build something around a dataset that I have a genuine interest
 
 
 
-!\[Architecture](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/architecture.png)
+![Architecture](https://raw.githubusercontent.com/gw383/fpl-pipeline/main/docs/architecture.png "Architecture")
 
 
 
