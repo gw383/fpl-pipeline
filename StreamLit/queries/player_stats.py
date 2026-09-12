@@ -51,7 +51,7 @@ def get_player_stats(selected_player, range_filter):
     from analytics.player_stats
     left join analytics.players on p_id = pg_id
     left join analytics.gameweeks on pg_gameweek = gw_id
-    where gw_deadline_time < cast(getdate() as date)
+    where gw_deadline_time < cast(getdate() as datetime)
       and p_full_name = '{selected_player}'
 
       and ('{range_filter}' = 'All gameweeks'
@@ -60,14 +60,14 @@ def get_player_stats(selected_player, range_filter):
             and gw_id in
                 (select top (10) gw_id
                  from analytics.gameweeks
-                 where gw_deadline_time < cast(getdate() as date)
+                 where gw_deadline_time < cast(getdate() as datetime)
                  order by gw_id desc))
           or
           ('{range_filter}' = 'Last 5 gameweeks'
             and gw_id in
                 (select top (5) gw_id
                  from analytics.gameweeks
-                 where gw_deadline_time < cast(getdate() as date)
+                 where gw_deadline_time < cast(getdate() as datetime)
                  order by gw_id desc)))
     group by p_full_name;
         """
@@ -96,20 +96,20 @@ with player_totals as
     left join analytics.players on pg_id = p_id
     left join analytics.positions on p_position = pos_id
     left join analytics.gameweeks on pg_gameweek = gw_id
-    where pos_name = '{position}' and gw_deadline_time < cast(getdate() as date)
+    where pos_name = '{position}' and gw_deadline_time < cast(getdate() as datetime)
       and ('{range_filter}' = 'All gameweeks' or
           ('{range_filter}' = 'Last 10 gameweeks'
                 and gw_id in
                 (select top(10) gw_id
                     from analytics.gameweeks
-                    where gw_deadline_time < cast(getdate() as date)
+                    where gw_deadline_time < cast(getdate() as datetime)
                     order by gw_id desc))
       or
           ('{range_filter}' = 'Last 5 gameweeks'
                 and gw_id in
                 (select top(5) gw_id
                     from analytics.gameweeks
-                    where gw_deadline_time < cast(getdate() as date)
+                    where gw_deadline_time < cast(getdate() as datetime)
                     order by gw_id desc)))
     group by pg_id
     having sum(pg_starts) >= 1)
@@ -141,21 +141,21 @@ left join analytics.players
 left join analytics.gameweeks
     on pg_gameweek = gw_id
 where p_full_name = '{selected_player}'
-  and gw_deadline_time < cast(getdate() as date)
+  and gw_deadline_time < cast(getdate() as datetime)
       and ('{range_filter}' = 'All gameweeks'
           or
           ('{range_filter}' = 'Last 10 gameweeks'
             and gw_id in
                 (select top (10) gw_id
                  from analytics.gameweeks
-                 where gw_deadline_time < cast(getdate() as date)
+                 where gw_deadline_time < cast(getdate() as datetime)
                  order by gw_id desc))
           or
           ('{range_filter}' = 'Last 5 gameweeks'
             and gw_id in
                 (select top (5) gw_id
                  from analytics.gameweeks
-                 where gw_deadline_time < cast(getdate() as date)
+                 where gw_deadline_time < cast(getdate() as datetime)
                  order by gw_id desc)))
 group by gw_id
 order by gw_id;
@@ -170,20 +170,20 @@ with range_info as
 (select
     count(*) * 90.0 as max_minutes
 from analytics.gameweeks
-where gw_deadline_time < cast(getdate() as date)
+where gw_deadline_time < cast(getdate() as datetime)
       and ('{range_filter}' = 'All gameweeks' or
           ('{range_filter}' = 'Last 10 gameweeks'
                 and gw_id in
                 (select top(10) gw_id
                  from analytics.gameweeks
-                 where gw_deadline_time < cast(getdate() as date)
+                 where gw_deadline_time < cast(getdate() as datetime)
                  order by gw_id desc))
           or
           ('{range_filter}' = 'Last 5 gameweeks'
                 and gw_id in
                 (select top(5) gw_id
                  from analytics.gameweeks
-                 where gw_deadline_time < cast(getdate() as date)
+                 where gw_deadline_time < cast(getdate() as datetime)
                  order by gw_id desc)))),
 
 player_totals as
@@ -206,20 +206,20 @@ from analytics.player_stats
     left join analytics.players on pg_id = p_id
     left join analytics.positions on p_position = pos_id
     left join analytics.gameweeks on pg_gameweek = gw_id
-where gw_deadline_time < cast(getdate() as date)
+where gw_deadline_time < cast(getdate() as datetime)
       and ('{range_filter}' = 'All gameweeks' or
           ('{range_filter}' = 'Last 10 gameweeks'
                 and gw_id in
                 (select top(10) gw_id
                  from analytics.gameweeks
-                 where gw_deadline_time < cast(getdate() as date)
+                 where gw_deadline_time < cast(getdate() as datetime)
                  order by gw_id desc))
           or
           ('{range_filter}' = 'Last 5 gameweeks'
                 and gw_id in
                 (select top(5) gw_id
                  from analytics.gameweeks
-                 where gw_deadline_time < cast(getdate() as date)
+                 where gw_deadline_time < cast(getdate() as datetime)
                  order by gw_id desc)))
 group by p_full_name, p_position
 ),
