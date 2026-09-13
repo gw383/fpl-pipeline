@@ -70,3 +70,7 @@ raw_data/
 .idea/
 .DS_Store
 Thumbs.db
+
+
+#misc
+Claude_outputs/
