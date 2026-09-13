@@ -1,78 +1,54 @@
-import requests
-import pandas as pd
-from datetime import datetime, timezone
-import json
-from sqlalchemy import text
+"""Ingests the FPL "bootstrap-static" endpoint.
 
+This single endpoint returns four reference datasets in one response:
+players, teams, positions and gameweeks. Each is loaded into its own
+raw table, replacing only the current season's rows.
+"""
+from __future__ import annotations
+
+import pandas as pd
+import requests
+from sqlalchemy.engine import Engine
+
+from common import convert_nested_to_json, delete_season_data, load_table_append, utc_now
 from config import CURRENT_SEASON
 
-def fetch_bootstrap_data():
-    url = "https://fantasy.premierleague.com/api/bootstrap-static/"
-    response = requests.get(url)
+BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
+
+# Maps each key in the API response to the raw table it is loaded into.
+RAW_TABLES = {
+    "elements": "raw_players",
+    "teams": "raw_teams",
+    "element_types": "raw_positions",
+    "events": "raw_gameweeks",
+}
+
+
+def fetch_bootstrap_data() -> dict:
+    """Fetch the raw bootstrap-static payload from the FPL API."""
+    response = requests.get(BOOTSTRAP_URL, timeout=30)
     response.raise_for_status()
     return response.json()
 
 
-def convert_nested_to_json(df):
-    for col in df.columns:
-        if df[col].apply(lambda x: isinstance(x, (dict, list))).any():
-            df[col] = df[col].apply(
-                lambda x: json.dumps(x) if isinstance(x, (dict, list)) else x)
-    return df
-
-def delete_season_data(engine, table_name, season):
-    with engine.begin() as conn:
-        conn.execute(
-            text(f"""DELETE FROM raw.{table_name} WHERE season = :season"""),
-            {"season": season})
-
-    print(f"Cleared {season} data from raw.{table_name}")
-
-
-def load_table(df, table_name, engine):
-    df["load_timestamp"] = df["load_timestamp"].astype(str)
-
-    df.to_sql(
-        table_name,
-        engine,
-        schema="raw",
-        if_exists="append",
-        index=False)
-
-    print(f"Loaded raw.{table_name} ({len(df)} rows)")
-
-
-
-def main_endpoint(engine):
-
+def main_endpoint(engine: Engine) -> None:
+    """Ingest players, teams, positions and gameweeks for CURRENT_SEASON."""
     print("Starting bootstrap-static ingestion...")
 
     data = fetch_bootstrap_data()
+    load_time = utc_now()
 
-    players = pd.DataFrame(data["elements"])
-    teams = pd.DataFrame(data["teams"])
-    positions = pd.DataFrame(data["element_types"])
-    gameweeks = pd.DataFrame(data["events"])
-
-    load_time = datetime.now(timezone.utc)
-
-    for df in [players, teams, positions, gameweeks]:
+    frames = {}
+    for api_key, table_name in RAW_TABLES.items():
+        df = pd.DataFrame(data[api_key])
         df["load_timestamp"] = load_time
         df["season"] = CURRENT_SEASON
+        frames[table_name] = convert_nested_to_json(df)
 
-    players = convert_nested_to_json(players)
-    teams = convert_nested_to_json(teams)
-    positions = convert_nested_to_json(positions)
-    gameweeks = convert_nested_to_json(gameweeks)
+    for table_name in RAW_TABLES.values():
+        delete_season_data(engine, table_name, CURRENT_SEASON)
 
-    delete_season_data(engine, "raw_players", CURRENT_SEASON)
-    delete_season_data(engine, "raw_teams", CURRENT_SEASON)
-    delete_season_data(engine, "raw_positions", CURRENT_SEASON)
-    delete_season_data(engine, "raw_gameweeks", CURRENT_SEASON)
+    for table_name, df in frames.items():
+        load_table_append(df, table_name, engine)
 
-    load_table(players, "raw_players", engine)
-    load_table(teams, "raw_teams", engine)
-    load_table(positions, "raw_positions", engine)
-    load_table(gameweeks, "raw_gameweeks", engine)
-
-    print("✅ Bootstrap-static ingestion complete")
+    print("Bootstrap-static ingestion complete")

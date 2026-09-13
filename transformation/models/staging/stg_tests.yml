@@ -27,9 +27,7 @@ models:
               to: ref('stg_positions')
               field: id
 
-
   - name: stg_player_gameweek
-
     columns:
       - name: player_id
         tests:

@@ -1,15 +1,25 @@
-def news_card(row):
+"""A single latest-news item, colour-coded by news type."""
 
-    text = row["news"].lower()
+INJURY_COLOR = "#d9534f"
+SUSPENDED_COLOR = "#f0ad4e"
+AVAILABLE_COLOR = "#5cb85c"
+DEFAULT_COLOR = "#428bca"
 
+
+def _news_colour(text: str) -> str:
+    """Pick a highlight colour based on keywords in the news text."""
     if "injury" in text:
-        colour = "#d9534f"
-    elif "suspended" in text:
-        colour = "#f0ad4e"
-    elif "available" in text:
-        colour = "#5cb85c"
-    else:
-        colour = "#428bca"
+        return INJURY_COLOR
+    if "suspended" in text:
+        return SUSPENDED_COLOR
+    if "available" in text:
+        return AVAILABLE_COLOR
+    return DEFAULT_COLOR
+
+
+def news_card(row) -> str:
+    """Render one news-feed row (player, headline, date) as an HTML card."""
+    colour = _news_colour(row["news"].lower())
 
     return f"""
     <div style="

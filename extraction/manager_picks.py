@@ -1,59 +1,50 @@
-import requests
+"""Ingests each manager's gameweek-by-gameweek picks."""
+from __future__ import annotations
+
 import pandas as pd
-from datetime import datetime, timezone
+import requests
+from sqlalchemy.engine import Engine
+
+from common import load_table_replace, utc_now
+
+TABLE_NAME = "raw_manager_picks"
 
 
-def fetch_picks(entry_id, gw):
-    url = f"https://fantasy.premierleague.com/api/entry/{entry_id}/event/{gw}/picks/"
-    response = requests.get(url)
+def fetch_picks(entry_id: int, gameweek: int) -> dict:
+    """Fetch one manager's picks for a single gameweek."""
+    url = f"https://fantasy.premierleague.com/api/entry/{entry_id}/event/{gameweek}/picks/"
+    response = requests.get(url, timeout=30)
     response.raise_for_status()
     return response.json()
 
-def load_table(df, table_name, engine):
 
-    df["load_timestamp"] = df["load_timestamp"].astype(str)
-
-    df.to_sql(
-        table_name,
-        engine,
-        schema="raw",
-        if_exists="replace",
-        index=False)
-
-def manager_picks(engine, entry_ids, gameweeks):
-
-    print(f" Ingesting manager picks")
+def manager_picks(engine: Engine, entry_ids: list[int], gameweeks: list[int]) -> None:
+    """Ingest picks for every (manager, gameweek) combination."""
+    print("Ingesting manager picks")
 
     rows = []
-
-    for eid in entry_ids:
+    for entry_id in entry_ids:
         for gw in gameweeks:
-
             try:
-                data = fetch_picks(eid, gw)
-
-                for p in data.get("picks", []):
+                data = fetch_picks(entry_id, gw)
+                for pick in data.get("picks", []):
                     rows.append({
-                        "entry_id": eid,
+                        "entry_id": entry_id,
                         "event_id": gw,
-                        "player_id": p["element"],
-                        "multiplier": p["multiplier"],
-                        "is_captain": p["is_captain"],
-                        "is_vice_captain": p["is_vice_captain"],
-                        "position": p["position"],
-                        "load_timestamp": datetime.now(timezone.utc)
+                        "player_id": pick["element"],
+                        "multiplier": pick["multiplier"],
+                        "is_captain": pick["is_captain"],
+                        "is_vice_captain": pick["is_vice_captain"],
+                        "position": pick["position"],
+                        "load_timestamp": utc_now(),
                     })
-
-                print(f"✔ {eid} GW{gw}")
-
-            except Exception as e:
-                print(f"⚠ {eid} GW{gw} failed: {e}")
+                print(f"{entry_id} GW{gw}")
+            except Exception as exc:
+                print(f"{entry_id} GW{gw} failed: {exc}")
 
     df = pd.DataFrame(rows)
-
     if df.empty:
         return
 
-    load_table(df, "raw_manager_picks", engine)
-
-    print(" Manager picks complete")
+    load_table_replace(df, TABLE_NAME, engine)
+    print("Manager picks complete")

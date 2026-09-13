@@ -1,0 +1,6 @@
+# Extra dependencies needed to run the test suite (tests/) locally --
+# not needed to run the pipeline or dashboard themselves.
+#
+# Install both files together: pip install -r requirements.txt -r requirements-dev.txt
+
+pytest

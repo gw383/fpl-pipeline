@@ -1,13 +1,16 @@
-with player_totals as
-(
+-- Ad-hoc analysis: the best per-position season totals for a given
+-- position, used as a sense-check against the max_* figures the
+-- Streamlit "Player" page computes itself (see queries/player_stats.py
+-- get_best_stats). Not part of the dbt build or the app -- exploratory.
+with player_totals as (
     select
         pg_id,
-        sum(pg_points) AS points,
-        sum(pg_minutes) AS minutes,
-        sum(pg_bonus) AS bonus,
-        sum(pg_defcons) * 90.0 / SUM(pg_minutes) AS dcp90,
-        sum(pg_points) * 90.0 / SUM(pg_minutes) AS pp90,
-        sum(pg_starts) AS starts
+        sum(pg_points)                              as points,
+        sum(pg_minutes)                              as minutes,
+        sum(pg_bonus)                                as bonus,
+        sum(pg_defcons) * 90.0 / sum(pg_minutes)     as dcp90,
+        sum(pg_points) * 90.0 / sum(pg_minutes)      as pp90,
+        sum(pg_starts)                               as starts
     from analytics.player_stats
     left join analytics.players
         on pg_id = p_id
@@ -19,9 +22,9 @@ with player_totals as
 )
 
 select
-    max(points) AS max_points,
-    max(minutes) AS max_minutes,
-    max(bonus) AS max_bonus,
-    cast(round(max(pp90),1) as decimal(10,1)) as max_pp90,
-    cast(round(max(dcp90),1) as decimal(10,1)) AS max_dcp90
+    max(points)                                     as max_points,
+    max(minutes)                                    as max_minutes,
+    max(bonus)                                       as max_bonus,
+    cast(round(max(pp90), 1) as decimal(10, 1))      as max_pp90,
+    cast(round(max(dcp90), 1) as decimal(10, 1))     as max_dcp90
 from player_totals

@@ -1,63 +1,68 @@
-import streamlit as st
+"""Home page: top-rated players, a metric-driven Best XI on a pitch
+graphic, a fixture-difficulty grid, and the latest player news.
+"""
 import base64
-from queries.team_data import (get_team_fixtures, get_latest_news, get_best_11)
-from queries.player_stats import get_star_top20
-from components.team_fixtures import team_fixture_card
+
+import streamlit as st
+
 from components.news import news_card
+from components.team_fixtures import team_fixture_card
+from queries.player_stats import get_star_top20
+from queries.team_data import get_best_11, get_latest_news, get_team_fixtures
 
+PITCH_IMAGE_PATH = "images/pitch.jpg"
 
+# Selectbox label -> underlying metric_value column used by get_best_11.
+BEST_11_METRICS = {
+    "Points": "points",
+    "Goals": "goals",
+    "Assists": "assists",
+    "xG": "xg",
+    "Defcons": "defcons",
+}
 
-st.set_page_config(
-    page_title="FPL Analytics",
-    page_icon="⚽",
-    layout="wide"
+st.set_page_config(page_title="FPL Analytics", page_icon="⚽", layout="wide")
+
+with open(PITCH_IMAGE_PATH, "rb") as image_file:
+    pitch_base64 = base64.b64encode(image_file.read()).decode()
+
+# ---------------------------------------------------------------------------
+# Header
+# ---------------------------------------------------------------------------
+
+st.markdown(
+    """
+    <h1 style='margin-bottom:0;'>FPL Analytics Dashboard</h1>
+    <p style='font-size:20px;color:#888;margin-top:0;'>
+    </p>
+    """,
+    unsafe_allow_html=True,
 )
 
-
-pitch_path = "images/pitch.jpg"
-
-with open(pitch_path, "rb") as image_file:
-    pitch_base64 = base64.b64encode(
-        image_file.read()
-    ).decode()
-
-# ---------- Header ----------
-
-st.markdown("""
-<h1 style='margin-bottom:0;'>FPL Analytics Dashboard</h1>
-<p style='font-size:20px;color:#888;margin-top:0;'>
-</p>
-""", unsafe_allow_html=True)
-
-
-# ---------- Load Fixture Data ----------
+# ---------------------------------------------------------------------------
+# Load data
+# ---------------------------------------------------------------------------
 
 fixtures = get_team_fixtures()
-
 news = get_latest_news()
 
-news["date"] = (
-    news["date"]
-    .dt.strftime("%d %b %H:%M")
-)
+if fixtures.empty:
+    # Either the database couldn't be reached (database.run_query already
+    # showed an error banner above) or analytics.fixtures genuinely has no
+    # upcoming fixtures loaded yet. Either way there's nothing to build the
+    # rest of this page from, so stop here rather than crashing on the
+    # groupby/indexing below.
+    st.warning("No fixture data is available right now.")
+    st.stop()
 
+if not news.empty:
+    news["date"] = news["date"].dt.strftime("%d %b %H:%M")
 
-
-# Order teams by average fixture difficulty
-
-next_5_gws = (
-    fixtures["gw"]
-    .drop_duplicates()
-    .sort_values()
-    .head(5)
-    .tolist()
-)
-
+# Order teams by average fixture difficulty over their next 5 gameweeks.
+next_5_gws = fixtures["gw"].drop_duplicates().sort_values().head(5).tolist()
 
 team_order = (
-    fixtures[
-        fixtures["gw"].isin(next_5_gws)
-    ]
+    fixtures[fixtures["gw"].isin(next_5_gws)]
     .groupby("team_name")["difficulty"]
     .mean()
     .sort_values()
@@ -65,105 +70,88 @@ team_order = (
     .tolist()
 )
 
-
-# ---------- Main Layout ----------
-
-# ---------- Main Layout ----------
-
 recommendations = get_star_top20()
 
+# ---------------------------------------------------------------------------
+# Main layout
+# ---------------------------------------------------------------------------
 
-c1, c2, c3, c4 = st.columns(
-    [0.5, 1.75, 1.25, 1],
-    gap="small"
-)
-# -------------------------------
+c1, c2, c3, c4 = st.columns([0.5, 1.75, 1.25, 1], gap="small")
+
+# -----------------------------------------------------------------
 # Top Players
-# -------------------------------
+# -----------------------------------------------------------------
 
 with c1:
-
     st.subheader("Top rated players")
 
+    if recommendations.empty:
+        st.caption("No ratings available right now.")
+
     for _, player in recommendations.iterrows():
-
+        rating = player["rating"] if player["rating"] is not None else 0
         st.html(
-        f"""
-        <div style="
-            display:flex;
-            align-items:center;
-            background:white;
-            border-radius:6px;
-            padding:3px 6px;
-            margin-bottom:2px;
-            height:24px;
-            width:230px;
-            box-shadow:0 1px 2px rgba(0,0,0,0.08);
-        ">
-
+            f"""
             <div style="
-                width:165px;
-                font-size:12px;
-                font-weight:700;
-                white-space:nowrap;
-                overflow:hidden;
-                text-overflow:ellipsis;
+                display:flex;
+                align-items:center;
+                background:white;
+                border-radius:6px;
+                padding:3px 6px;
+                margin-bottom:2px;
+                height:24px;
+                width:230px;
+                box-shadow:0 1px 2px rgba(0,0,0,0.08);
             ">
-                {player['player']}
-            </div>
 
-            <div style="
-                margin-left:auto;
-                font-size:12px;
-                font-weight:700;
-                color:#333;
-            ">
-                {player['rating'] if player['rating'] is not None else 0:.2f}
-            </div>
+                <div style="
+                    width:165px;
+                    font-size:12px;
+                    font-weight:700;
+                    white-space:nowrap;
+                    overflow:hidden;
+                    text-overflow:ellipsis;
+                ">
+                    {player['player']}
+                </div>
 
-        </div>
-        """
+                <div style="
+                    margin-left:auto;
+                    font-size:12px;
+                    font-weight:700;
+                    color:#333;
+                ">
+                    {rating:.2f}
+                </div>
+
+            </div>
+            """
         )
 
-
+# -----------------------------------------------------------------
+# Best XI
+# -----------------------------------------------------------------
 
 with c2:
-
-    metric = st.selectbox(
-        "Build team based on",
-        [
-            "Points",
-            "Goals",
-            "Assists",
-            "xG",
-            "Defcons"
-        ]
-    )
-
-    metric_map = {
-        "Points": "points",
-        "Goals": "goals",
-        "Assists": "assists",
-        "xG": "xg",
-        "Defcons": "defcons"
-    }
-
-    selected_metric = metric_map[metric]
+    metric_label = st.selectbox("Build team based on", list(BEST_11_METRICS))
+    selected_metric = BEST_11_METRICS[metric_label]
 
     best_11 = get_best_11(selected_metric)
-    
-    st.subheader(f"Best XI — {metric}")
 
-    formation = best_11["formation"].iloc[0]
+    st.subheader(f"Best XI — {metric_label}")
 
-    # Split players by position
-    goalkeeper = best_11[best_11["p_position"] == 1]
-    defenders = best_11[best_11["p_position"] == 2]
-    midfielders = best_11[best_11["p_position"] == 3]
-    forwards = best_11[best_11["p_position"] == 4]
+    if best_11.empty:
+        st.info("No player data available to build a team from yet.")
+        goalkeeper = defenders = midfielders = forwards = best_11
+    else:
+        formation = best_11["formation"].iloc[0]
 
-    def player_card(row):
+        goalkeeper = best_11[best_11["p_position"] == 1]
+        defenders = best_11[best_11["p_position"] == 2]
+        midfielders = best_11[best_11["p_position"] == 3]
+        forwards = best_11[best_11["p_position"] == 4]
 
+    def player_card(row) -> str:
         return f"""
         <div style="
             text-align:center;
@@ -194,7 +182,6 @@ with c2:
         </div>
         """
 
-    # Pitch
     st.html(
         f"""
         <div style="
@@ -259,34 +246,19 @@ with c2:
                 {''.join(player_card(row) for _, row in forwards.iterrows())}
             </div>
 
-
         </div>
         """
     )
 
-# -------------------------------
+# -----------------------------------------------------------------
 # Fixtures
-# -------------------------------
+# -----------------------------------------------------------------
 
 with c3:
-
     st.subheader("Fixture Difficulty")
 
-
-    next_5_gws = (
-        fixtures["gw"]
-        .drop_duplicates()
-        .sort_values()
-        .head(5)
-        .tolist()
-    )
-
-
-    gw_headers = ""
-
-    for gw in next_5_gws:
-
-        gw_headers += f"""
+    gw_headers = "".join(
+        f"""
         <div style="
             width:65px;
             text-align:center;
@@ -295,81 +267,49 @@ with c3:
             GW {gw}
         </div>
         """
-
-
-    st.html(
-    f"""
-    <div style="
-        display:flex;
-        align-items:center;
-        font-weight:700;
-        font-size:12px;
-        margin-bottom:4px;
-    ">
-
-        <div style="
-            width:65px;
-        ">
-            Team
-        </div>
-
-        <div style="
-            display:flex;
-        ">
-            {gw_headers}
-        </div>
-
-    </div>
-    """
+        for gw in next_5_gws
     )
 
+    st.html(
+        f"""
+        <div style="
+            display:flex;
+            align-items:center;
+            font-weight:700;
+            font-size:12px;
+            margin-bottom:4px;
+        ">
+
+            <div style="width:65px;">
+                Team
+            </div>
+
+            <div style="display:flex;">
+                {gw_headers}
+            </div>
+
+        </div>
+        """
+    )
 
     for team in team_order:
+        team_df = fixtures[fixtures["team_name"] == team]
+        position = int(team_df["team_table_position"].iloc[0])
+        team_df = team_df[team_df["gw"].isin(next_5_gws)]
 
+        grouped_fixtures = {gw: group for gw, group in team_df.groupby("gw")}
 
-        team_df = fixtures[
-            fixtures["team_name"] == team
-        ]
+        st.html(team_fixture_card(team, position, grouped_fixtures, next_5_gws))
 
-
-        position = int(
-            team_df["team_table_position"].iloc[0]
-        )
-
-
-        team_df = team_df[
-            team_df["gw"].isin(next_5_gws)
-        ]
-
-
-        grouped_fixtures = {
-            gw: group
-            for gw, group in team_df.groupby("gw")
-        }
-
-
-        st.html(
-            team_fixture_card(
-                team,
-                position,
-                grouped_fixtures,
-                next_5_gws
-            )
-        )
-
-
-
-# -------------------------------
+# -----------------------------------------------------------------
 # News
-# -------------------------------
+# -----------------------------------------------------------------
 
 with c4:
-
     st.subheader("Latest News")
 
-
-    for _, row in news.iterrows():
-
-        st.html(
-            news_card(row)
-        )
+    if news.empty:
+        st.caption("No news items right now.")
+    else:
+        for _, row in news.iterrows():
+            st.html(news_card(row))

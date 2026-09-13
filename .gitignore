@@ -36,9 +36,12 @@ airflow/config/
 airflow/plugins/
 
 # Build / Executables
+# NOTE: *.spec is intentionally tracked now, not ignored -- FPL Dashboard.spec
+# and run_pipeline.spec are the source-of-truth recipes PyInstaller needs to
+# rebuild the .exe launchers, so they should live in version control like any
+# other source file. Only the generated build output stays ignored:
 dist/
 build/
-*.spec
 
 # Local databases
 *.mdf
@@ -61,3 +64,9 @@ raw_data/
 *.tmp
 *.temp
 ~$*
+
+# Editor / OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

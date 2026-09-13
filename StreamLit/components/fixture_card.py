@@ -1,28 +1,22 @@
+"""A player's next 5 fixtures, colour-coded by difficulty (used on the Player page)."""
 import streamlit as st
 
+from colours import DIFFICULTY_COLOURS
 
-def fixture_card(fixtures_df):
 
-    difficulty_colours = {
-        1: "#375523",
-        2: "#01fc7a",
-        3: "#e7e7e7",
-        4: "#ff1751",
-        5: "#80072d"
-    }
+def fixture_card(fixtures_df) -> None:
+    """Render one column per upcoming gameweek, each showing that
+    gameweek's fixture(s) for the selected player's team.
 
+    Handles blank gameweeks (no game), single fixtures, and double
+    gameweeks (two fixtures) differently.
+    """
     cols = st.columns(5)
-
     gameweeks = fixtures_df["gw"].unique()
 
     for col, gw in zip(cols, gameweeks):
-
         with col:
-
-            games = fixtures_df[
-                fixtures_df["gw"] == gw
-            ].to_dict("records")
-
+            games = fixtures_df[fixtures_df["gw"] == gw].to_dict("records")
 
             st.markdown(
                 f"""
@@ -34,13 +28,10 @@ def fixture_card(fixtures_df):
                     GW{gw}
                 </div>
                 """,
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
 
-
-            # Blank gameweek
             if len(games) == 0:
-
                 st.markdown(
                     """
                     <div style="
@@ -56,19 +47,15 @@ def fixture_card(fixtures_df):
                         Blank
                     </div>
                     """,
-                    unsafe_allow_html=True
+                    unsafe_allow_html=True,
                 )
 
-
-            # Single fixture
             elif len(games) == 1:
-
                 fixture = games[0]
-
                 st.markdown(
                     f"""
                     <div style="
-                        background:{difficulty_colours[fixture['difficulty']]};
+                        background:{DIFFICULTY_COLOURS[fixture['difficulty']]};
                         height:90px;
                         border-radius:10px;
                         display:flex;
@@ -86,19 +73,15 @@ def fixture_card(fixtures_df):
                         </span>
                     </div>
                     """,
-                    unsafe_allow_html=True
+                    unsafe_allow_html=True,
                 )
 
-
-            # Double gameweek
             else:
-
                 for fixture in games:
-
                     st.markdown(
                         f"""
                         <div style="
-                            background:{difficulty_colours[fixture['difficulty']]};
+                            background:{DIFFICULTY_COLOURS[fixture['difficulty']]};
                             height:42px;
                             border-radius:10px;
                             display:flex;
@@ -113,13 +96,7 @@ def fixture_card(fixtures_df):
                             <span>{fixture['venue']}</span>
                         </div>
                         """,
-                        unsafe_allow_html=True
+                        unsafe_allow_html=True,
                     )
 
-
-    st.markdown(
-        """
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown("</div>", unsafe_allow_html=True)

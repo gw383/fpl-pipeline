@@ -1,58 +1,47 @@
-import requests
+"""Ingests basic profile info for a list of FPL manager entry IDs."""
+from __future__ import annotations
+
 import pandas as pd
-from datetime import datetime, timezone
+import requests
+from sqlalchemy.engine import Engine
+
+from common import load_table_replace, utc_now
+
+TABLE_NAME = "raw_manager_profiles"
 
 
-def fetch_entry(entry_id):
+def fetch_entry(entry_id: int) -> dict:
+    """Fetch a manager's public entry profile from the FPL API."""
     url = f"https://fantasy.premierleague.com/api/entry/{entry_id}/"
-    response = requests.get(url)
+    response = requests.get(url, timeout=30)
     response.raise_for_status()
     return response.json()
 
 
-def load_table(df, table_name, engine):
-
-    df["load_timestamp"] = df["load_timestamp"].astype(str)
-
-    df.to_sql(
-        table_name,
-        engine,
-        schema="raw",
-        if_exists="replace",
-        index=False)
-
-
-def manager_profiles(engine, entry_ids):
-
-    print(f" Ingesting manager profiles ({len(entry_ids)} managers)")
+def manager_profiles(engine: Engine, entry_ids: list[int]) -> None:
+    """Ingest profile data for each manager in `entry_ids`."""
+    print(f"Ingesting manager profiles ({len(entry_ids)} managers)")
 
     rows = []
-
-    for eid in entry_ids:
-
+    for entry_id in entry_ids:
         try:
-            data = fetch_entry(eid)
-
+            data = fetch_entry(entry_id)
             rows.append({
-                "entry_id": eid,
+                "entry_id": entry_id,
                 "player_name": data.get("player_name"),
                 "team_name": data.get("name"),
                 "overall_points": data.get("summary_overall_points"),
                 "overall_rank": data.get("summary_overall_rank"),
                 "value": data.get("last_deadline_value"),
-                "load_timestamp": datetime.now(timezone.utc)
+                "load_timestamp": utc_now(),
             })
-
-            print(f"✔ Loaded manager {eid}")
-
-        except Exception as e:
-            print(f"⚠ Failed {eid}: {e}")
+            print(f"Loaded manager {entry_id}")
+        except Exception as exc:
+            print(f"Failed {entry_id}: {exc}")
 
     df = pd.DataFrame(rows)
-
     if df.empty:
         return
 
-    load_table(df, "raw_manager_profiles", engine)
-
-    print(" Manager profiles complete")
+    load_table_replace(df, TABLE_NAME, engine)
+    print("Manager profiles complete")

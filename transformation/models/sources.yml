@@ -11,13 +11,9 @@ sources:
       - name: raw_event_live
       - name: raw_gameweeks
       - name: raw_manager_picks
-      - name: raw_manager_history
+      - name: raw_manager_profiles
       - name: raw_manager_transfers
       - name: raw_positions
-  - name: analytics
-    schema: analytics
-    tables:
-      - name: seasons
   - name: stg
     schema: stg
     tables:

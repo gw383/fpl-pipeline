@@ -1,54 +1,48 @@
-from sqlalchemy import create_engine
-from urllib.parse import quote_plus
-import pandas as pd
-import os
+"""Entry point for the extraction stage of the pipeline.
 
-from dotenv import load_dotenv
-from main_endpoint import main_endpoint
-from fixtures import fixtures
+Run directly (`python ingest.py`) or as the first task in the Airflow
+DAG. Pulls bootstrap reference data, fixtures, live gameweek stats and
+manager data for TRACKED_ENTRY_IDS, in that order.
+"""
+from __future__ import annotations
+
+from db import get_engine
 from event_live import event_live
-
-from manager_profiles import manager_profiles
+from fixtures import fixtures
+from main_endpoint import main_endpoint
 from manager_picks import manager_picks
+from manager_profiles import manager_profiles
 from manager_transfers import manager_transfers
 
-load_dotenv()
+# FPL manager entry IDs to track. Add more IDs here to follow
+# additional managers/mini-leagues.
+TRACKED_ENTRY_IDS = [146897]
 
-connection_string = (
-    "DRIVER={ODBC Driver 18 for SQL Server};"
-    f"SERVER={os.getenv('FPL_DB_SERVER', 'localhost')};"
-    "DATABASE=FPL;"
-    f"UID={os.getenv('FPL_DB_USER')};"
-    f"PWD={os.getenv('FPL_DB_PASSWORD')};"
-    "TrustServerCertificate=yes;"
-)
+# A Premier League season runs 38 gameweeks.
+ALL_GAMEWEEKS = list(range(1, 39))
 
-engine = create_engine(
-    f"mssql+pyodbc:///?odbc_connect={quote_plus(connection_string)}"
-)
 
-def run_pipeline():
+def run_pipeline() -> None:
+    """Run every extraction step in sequence against one shared engine."""
+    engine = get_engine()
 
-    print("\n STARTING FPL PIPELINE\n")
+    print("\nSTARTING FPL PIPELINE\n")
 
     main_endpoint(engine)
     fixtures(engine)
+    event_live(engine, ALL_GAMEWEEKS)
 
-    gameweeks = list(range(1, 39))
-    event_live(engine, gameweeks)
+    print("\nIngesting manager profiles...")
+    manager_profiles(engine, TRACKED_ENTRY_IDS)
 
-    entry_ids = [146897]
+    print("\nIngesting manager picks...")
+    manager_picks(engine, TRACKED_ENTRY_IDS, ALL_GAMEWEEKS)
 
-    print("\n Ingesting manager profiles...")
-    manager_profiles(engine, entry_ids)
+    print("\nIngesting manager transfers...")
+    manager_transfers(engine, TRACKED_ENTRY_IDS)
 
-    print("\n Ingesting manager picks...")
-    manager_picks(engine, entry_ids, gameweeks)
+    print("\nPIPELINE COMPLETE")
 
-    print("\n Ingesting manager transfers...")
-    manager_transfers(engine, entry_ids)
-
-    print("\n PIPELINE COMPLETE")
 
 if __name__ == "__main__":
     run_pipeline()

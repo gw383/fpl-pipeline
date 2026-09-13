@@ -1,47 +1,27 @@
-import pandas as pd
+"""A team's row in the Home page's fixture-difficulty grid."""
+
+from colours import difficulty_colour
 
 
-def difficulty_colour(difficulty):
-
-    if difficulty <= 2:
-        return "#5cb85c"
-    elif difficulty == 3:
-        return "#f0ad4e"
-    else:
-        return "#d9534f"
-
-
-
-def ordinal(n):
-
+def ordinal(n: int) -> str:
+    """Return the ordinal suffix for n, e.g. 1 -> "st", 12 -> "th"."""
     if 10 <= n % 100 <= 20:
         return "th"
-
-    return {
-        1: "st",
-        2: "nd",
-        3: "rd"
-    }.get(n % 10, "th")
+    return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
 
-
-def team_fixture_card(team_name, position, fixtures, gameweeks):
-
+def team_fixture_card(team_name: str, position: int, fixtures, gameweeks) -> str:
+    """Render one team's row: name, league position, and a fixture
+    cell for each of the given gameweeks (blank if the team has none).
+    """
     fixture_cells = ""
 
-
     for gw in gameweeks:
-
         cell_html = ""
 
         if gw in fixtures:
-
             for _, fixture in fixtures[gw].iterrows():
-
-                colour = difficulty_colour(
-                    fixture["difficulty"]
-                )
-
+                colour = difficulty_colour(fixture["difficulty"])
                 cell_html += f"""
                 <div style="
                     background:{colour};
@@ -58,9 +38,7 @@ def team_fixture_card(team_name, position, fixtures, gameweeks):
                     {fixture['opponent']} ({fixture['venue']})
                 </div>
                 """
-
         else:
-
             cell_html = """
             <div style="
                 width:62px;
@@ -68,7 +46,6 @@ def team_fixture_card(team_name, position, fixtures, gameweeks):
             ">
             </div>
             """
-
 
         fixture_cells += f"""
         <div style="
@@ -81,8 +58,6 @@ def team_fixture_card(team_name, position, fixtures, gameweeks):
             {cell_html}
         </div>
         """
-
-
 
     return f"""
 

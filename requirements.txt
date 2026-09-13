@@ -1,0 +1,24 @@
+# Runtime dependencies for the extraction pipeline and Streamlit
+# dashboard, run locally via the project venv (app.py / run_pipeline.py
+# launch `streamlit` and `python extraction/ingest.py` from here).
+#
+# dbt-core and dbt-sqlserver are NOT listed here -- they run inside the
+# Airflow container instead, where they're installed by airflow/Dockerfile.
+#
+# No versions were pinned in the original project; add specific
+# versions once you've confirmed what's currently installed in venv
+# (`pip freeze`), so this file actually reproduces a working
+# environment for anyone else who clones the repo.
+
+requests
+pandas
+python-dotenv
+SQLAlchemy
+pyodbc
+streamlit
+plotly
+
+# Only needed to rebuild the desktop launcher .exe files (see
+# run_pipeline.spec / "FPL Dashboard.spec") -- not needed to just run
+# the pipeline or dashboard.
+# pyinstaller

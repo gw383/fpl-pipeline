@@ -1,71 +1,39 @@
-import requests
-import pandas as pd
-from datetime import datetime, timezone
-from sqlalchemy import text
+"""Ingests fixture data (kickoff times, scores, difficulty) from the FPL API."""
+from __future__ import annotations
 
+import pandas as pd
+import requests
+from sqlalchemy.engine import Engine
+
+from common import delete_season_data, load_table_append, utc_now
 from config import CURRENT_SEASON
 
-def fetch_fixtures():
-    url = "https://fantasy.premierleague.com/api/fixtures/"
+FIXTURES_URL = "https://fantasy.premierleague.com/api/fixtures/"
+TABLE_NAME = "raw_fixtures"
 
-    response = requests.get(url)
+
+def fetch_fixtures() -> list[dict]:
+    """Fetch the full fixture list for the current season from the FPL API."""
+    response = requests.get(FIXTURES_URL, timeout=30)
     response.raise_for_status()
-
     return response.json()
 
 
-def delete_season_data(engine, table_name, season):
+def fixtures(engine: Engine) -> None:
+    """Ingest fixtures for CURRENT_SEASON, replacing any existing rows."""
+    print("Starting fixtures ingestion...")
 
-    with engine.begin() as conn:
-        result = conn.execute(
-            text(f"""
-                DELETE FROM raw.{table_name}
-                WHERE season = :season
-            """),
-            {"season": season})
+    data = pd.DataFrame(fetch_fixtures())
 
-        print(f"Deleted {result.rowcount} rows from raw.{table_name}")
-
-    print(f" Cleared {season} data from raw.{table_name}")
-
-
-def load_table(df, table_name, engine):
-    df["load_timestamp"] = df["load_timestamp"].astype(str)
-
-    df.to_sql(
-        table_name,
-        engine,
-        schema="raw",
-        if_exists="append",
-        index=False)
-
-    print(f"✔ Loaded raw.{table_name} ({len(df)} rows)")
-
-def fixtures(engine):
-
-    print(" Starting fixtures ingestion...")
-
-    fixtures = pd.DataFrame(fetch_fixtures())
-
-    if fixtures.empty:
-        print("⚠ No fixture data returned")
+    if data.empty:
+        print("No fixture data returned")
         return
 
-    fixtures.columns = [
-        col.lower().replace(" ", "_")
-        for col in fixtures.columns]
+    data.columns = [col.lower().replace(" ", "_") for col in data.columns]
+    data["load_timestamp"] = utc_now()
+    data["season"] = CURRENT_SEASON
 
-    load_time = datetime.now(timezone.utc)
+    delete_season_data(engine, TABLE_NAME, CURRENT_SEASON)
+    load_table_append(data, TABLE_NAME, engine)
 
-    fixtures["load_timestamp"] = load_time
-    fixtures["season"] = CURRENT_SEASON
-
-    delete_season_data(engine, "raw_fixtures", CURRENT_SEASON)
-
-
-    load_table(
-        fixtures,
-        "raw_fixtures",
-        engine)
-
-    print("✅ Fixtures ingestion complete")
+    print("Fixtures ingestion complete")

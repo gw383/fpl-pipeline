@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: player_points
+    description: >
+      Per-player-per-gameweek fantasy-points breakdown. One row per
+      (pg_id, pg_gameweek) -- this is the incremental model's unique_key,
+      so this test also guards against the delete+insert incremental
+      strategy ever silently duplicating rows.
+    columns:
+      - name: pg_id
+        tests:
+          - not_null
+      - name: pg_gameweek
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - pg_id
+            - pg_gameweek
+
+  - name: player_rating
+    description: >
+      One "star" rating row per player. Both the Player page (get_star)
+      and the Home page (get_star_top20) read this table, so a player
+      row going missing or duplicating here would silently break (or
+      show inconsistent numbers on) both pages at once.
+    columns:
+      - name: p_id
+        tests:
+          - not_null
+          - unique
+      - name: star
+        tests:
+          - not_null

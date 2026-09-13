@@ -7,8 +7,8 @@ fpl_pipeline:
       port: 1433
       database: fpl
       schema: raw
-      user: fpl_airflow
-      password: Spotpip12!
+      user: "{{ env_var('FPL_DB_USER') }}"
+      password: "{{ env_var('FPL_DB_PASSWORD') }}"
       encrypt: true
       trust_cert: true
       threads: 1

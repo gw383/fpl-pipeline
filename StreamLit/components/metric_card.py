@@ -1,7 +1,9 @@
+"""A single headline stat with its positional rank, e.g. "Points: 82 (#3)"."""
 import streamlit as st
 
 
-def metric_card(title, value, rank):
+def metric_card(title: str, value, rank) -> None:
+    """Render one metric card: a title, a big value, and a rank badge."""
     st.html(
         f"""
         <div style="
@@ -43,4 +45,5 @@ def metric_card(title, value, rank):
                 #{rank}
             </div>
         </div>
-        """)
+        """
+    )
