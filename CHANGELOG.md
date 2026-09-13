@@ -453,3 +453,359 @@ failing the data-quality test.
 and reload the Player page. `dbt run`/`dbt test` don't need re-running
 for the `get_player_stats` fix -- that's pure Python/SQL-string code, no
 dbt model changed.
+
+---
+
+# Round 3: promoting `refactored/` to be the project
+
+Everything in this folder has now been copied over the top of the real
+project files at the repo root (`extraction/`, `transformation/`,
+`StreamLit/`, `airflow/dags/`, `app.py`, `run_pipeline.py`, the `.spec`
+files, `.gitignore`, plus the new `requirements*.txt`, `pytest.ini`,
+`tests/`, `.env.example` files, and this `CHANGELOG.md`) -- `refactored/`
+is no longer a separate copy to review, it's what's now sitting at
+`C:\fpl-pipeline`. Two things needed fixing that didn't exist anywhere
+in `refactored/` yet, because this folder never contained the Airflow
+Docker/dbt-profile files in the first place:
+
+## `airflow/dbt/profiles.yml` -- hardcoded password removed
+
+This file (mounted into every Airflow container via
+`docker-compose.yaml`'s `./dbt:/home/airflow/.dbt` volume, so it's the
+profile dbt actually uses inside Docker) had a real, plaintext database
+password committed to it: `password: Spotpip12!`, alongside
+`database: fpl` (inconsistent casing vs. `FPL` used everywhere else).
+Neither of those two things is true anymore -- the file now reads
+`user: "{{ env_var('FPL_DB_USER') }}"` /
+`password: "{{ env_var('FPL_DB_PASSWORD') }}"` (both already set in
+`airflow/.env`, which Docker Compose passes into the containers), and
+`database: FPL`. This matches the pattern already used by
+`airflow/.dbt/profiles.yml` (a second, unused profiles file that was
+sitting in the project but isn't referenced by `docker-compose.yaml` at
+all -- harmless, but worth knowing it's dead weight if you ever clean up).
+
+**Please rotate the `FPL_DB_PASSWORD` credential** (change the SQL Server
+login's password and update it in `.env` / `airflow/.env`) since the old
+one has been sitting in a plaintext file that either was, or easily
+could have been, committed to git history already -- fixing the file
+going forward doesn't undo any past exposure.
+
+## `airflow/dags/fpl_pipeline.py` -- missing `dbt deps` step
+
+`transformation/packages.yml` (added in Round 2, declaring the
+`dbt_utils` dependency `stg_tests.yml` needs) requires `dbt deps` to run
+before `dbt build`/`dbt test` can succeed. Nothing in the Docker image
+(`airflow/Dockerfile` only installs dbt itself, at image-build time,
+before `transformation/` even exists inside the container) or the DAG
+ever ran it, so the Airflow-orchestrated pipeline would have hit the
+exact same "package not installed" failure you originally saw running
+`dbt build` manually. A `dbt_deps` `BashOperator` task now runs between
+`ingest` and `dbt_build`: `ingest >> dbt_deps >> dbt_build >> dbt_test`.
+
+## `.gitignore`
+
+- `*.spec` is no longer ignored. `FPL Dashboard.spec` and
+  `run_pipeline.spec` are the source-of-truth recipes PyInstaller needs
+  to rebuild the two `.exe` launchers -- they're source, not build
+  output, so they're now tracked like any other file. `dist/` and
+  `build/` (PyInstaller's generated output) are still ignored.
+- Added common editor/OS junk (`.vscode/`, `.idea/`, `.DS_Store`,
+  `Thumbs.db`) -- harmless either way, but keeps future contributors'
+  editor state out of diffs.
+- No new secret-related entries were needed: with `airflow/dbt/profiles.yml`
+  fixed to use `env_var()` above, there's no longer a plaintext credential
+  in any tracked file.
+
+## What this changed nothing about
+
+- `app.py`, `run_pipeline.py` and both `.spec` files are functionally
+  identical to Round 1 (docstrings/formatting only) -- the `.exe`
+  launchers keep working exactly as before, since neither PyInstaller
+  spec bundles any project source (`datas=[]`, `hiddenimports=[]` in
+  both) and no top-level folder was renamed or moved.
+- `airflow/docker-compose.yaml` and `airflow/Dockerfile` were not
+  touched -- Airflow/Docker connectivity (the Postgres/Redis/Celery
+  setup, the `host.docker.internal` SQL Server connection, the
+  `../..:/opt/airflow/fpl-pipeline` code mount) is unchanged.
+- `README.md` was left exactly as it was, per request. A suggested new
+  version reflecting everything in Rounds 1-3 is provided alongside it
+  as `README.suggested.md` -- nothing is auto-adopted from it.
+
+## What I could not do myself, and why
+
+This session has no ability to run `git`, run any other shell command,
+or delete files on your machine (a known, tracked issue: a September 8
+Windows update broke the isolated environment Claude's device tools use
+to run commands on your computer -- file read/write still works fine,
+which is how this copy was done). That means a few steps are still
+yours to do:
+
+1. **Delete `extraction/connection-test.py`.** It was renamed to
+   `check_connection.py` in Round 1 (the old name had a hyphen, invalid
+   in a Python module name); the old file is still sitting there
+   unused. `git rm "extraction/connection-test.py"` removes it and
+   stages the removal in one step.
+2. **Delete the `refactored/` folder** now that its contents are the
+   project. `git rm -r refactored` (or delete it in Explorer, then
+   `git add -A`).
+3. **`archive/` is optional to remove.** It's confirmed dead code (near-
+   duplicate, earlier drafts of the ingestion scripts) but nothing
+   forces its removal -- `git rm -r archive` if you'd like it gone.
+4. **A stray nested git repository was found at `StreamLit/.git`**
+   (its own local-only repo, unrelated to the project's real repo, whose
+   remote is `github.com/gw383/fpl-pipeline`). This isn't something
+   Round 1-3 created -- it was already there. Left in place, it can make
+   `git add`/`git status` treat `StreamLit/` as an embedded repository
+   (a "gitlink") instead of a normal tracked folder, which risks the
+   files inside silently not being tracked the way you expect. Delete
+   `StreamLit/.git` (it's a hidden folder -- enable "show hidden items"
+   in Explorer, or `Remove-Item -Recurse -Force StreamLit\.git` in
+   PowerShell) **before** your next `git add`.
+5. **Run the actual commit.** Once 1-4 are done:
+   ```
+   git add -A
+   git status   # sanity-check what's staged before committing
+   git commit -m "Adopt refactored project structure (see CHANGELOG.md)"
+   ```
+6. **Rotate `FPL_DB_PASSWORD`** as noted above.
+7. **Re-run `dbt deps`** once (manually, or let the next Airflow DAG run
+   do it) so `transformation/dbt_packages/` matches the profile change --
+   this doesn't depend on the password rotation and can be done any time.
+
+---
+
+# Round 4: expected-vs-actual chart, differentials, and a redesigned star rating
+
+Three separate additions, all live now (dbt models edited in place, not
+added as new files, per request).
+
+## `player_rating.sql` -- redesigned, not replaced
+
+The model still produces one row per player with a `star` column, so
+nothing that reads `analytics.player_rating` needed to change shape --
+`get_star`/`get_star_top20`/the new `get_in_form_differentials` all still
+work off `p_id`/`player`/`p_position`/`star`. What changed is how `star`
+is built:
+
+- **Actual points and expected points are now both tracked and blended**,
+  not just actual points. A new `player_points_expected` CTE reuses
+  `player_points`'s existing formula unchanged, except goals/assists/goals-conceded
+  (the three categories with a real underlying-process stat) are computed
+  from `xG`/`xA`/`xGA` instead of what actually happened. Everything else
+  (minutes, clean sheets, bonus, saves, cards, defensive contributions,
+  own goals, missed pens -- none of which have a meaningful "expected"
+  version) is identical between the two. Both the season total and the
+  last-5-gameweek rate are computed for actual and expected points, then
+  blended (weights below) -- a player who *consistently* outperforms
+  their expected points keeps scoring well here via the actual-points
+  half of the blend, rather than being marked down as "just lucky".
+- **Percentiles are now computed within position** (`partition by
+  p_position`), for both the season and last-5 scores. Previously a
+  single global percentile meant defenders/keepers were ranked against
+  forwards on raw points, which they'll structurally lose most of the
+  time regardless of how good they are for their position.
+- **Minutes security**: previously a hard cliff (last-5 minutes < 30 ->
+  form score zeroed). Now a `minutes_security_score` (0-1) blends how
+  close to "fully nailed on" (450 minutes / 5 games) a player's last 5
+  gameweeks were with a penalty when `p_news`/`p_news_date` shows a live,
+  recent flag -- applied as a final multiplier on the whole star, not
+  folded in as one ingredient among others, since a great underlying
+  rating means nothing if the player won't actually be on the pitch.
+- **Bug fix**: the fixture-difficulty ingredient could previously exceed
+  10 for a very easy run of fixtures (no clamp), meaning the final star
+  could silently exceed its documented 0-10 scale. Now explicitly clamped.
+- **All weights are tunable from one place** -- a block of `{% set %}`
+  Jinja variables at the top of the file, each commented with what it
+  controls and which group it must sum to 1.0 with. Change a number,
+  `dbt run --select player_rating`, reload the dashboard. The starting
+  weights (season quality 40% / recent form 30% / team form 10% /
+  fixtures 20%; each of those split roughly 45/55 or 40/60 actual vs.
+  expected) are a reasonable starting point, not a validated optimum --
+  see the note on backtesting below.
+- New output columns exposed for transparency/tinkering:
+  `season_actual_score`, `season_expected_score`, `quality_score`,
+  `last5_actual_score`, `last5_expected_score`, `recent_form_score`,
+  `minutes_security_score` -- all readable via `get_star` on the Player
+  page if you want to see which ingredient is driving a given rating.
+
+**Not done, deliberately, to keep this a working model rather than a
+research project**: no backtest of these weights against actual
+subsequent gameweeks was run (that needs a real database connection this
+sandbox doesn't have) -- try the weights, watch how the ratings track
+outcomes over a few gameweeks, and adjust from there. `analytics.teams.team_strength`
+(FPL's own preseason team-strength rating) also isn't used anywhere in
+this model; it's available if you want a more rigorous fixture/team-form
+signal than raw FDR and match results later.
+
+## `players.sql` -- added `p_ownership`
+
+`stg_players` already captured `ownership` (FPL's `selected_by_percent`)
+but it never reached `analytics.players`. Needed for the differentials
+feature below; a one-line addition, nothing else changed.
+
+## Home page: "In-form differentials"
+
+New full-width section under the existing four-column layout: up to 20
+players with `p_ownership <= 10%`, `minutes_security_score >= 0.5`
+(filters out noisy one-off cameos), ordered by `recent_form_score` --
+deliberately *not* the overall `star`, since star also factors in
+fixtures/team form and would drown out "is this player actually playing
+well right now" with "are their next few fixtures easy". New query
+(`get_in_form_differentials` in `queries/player_stats.py`) and component
+(`components/differential_card.py`).
+
+## Player page: expected-vs-actual chart
+
+New grouped bar chart (`charts/expected_vs_actual.py`), added below the
+existing four charts: goals vs xG, assists vs xA, and -- for goalkeepers
+and defenders only, since it's not fantasy-relevant for other positions --
+goals conceded vs xGA. `get_player_stats` now also sums `pg_xG`/`pg_xA`/`pg_xGa`
+to feed it.
+
+## Verified before delivery (round 4)
+
+- `ruff check --select F,E9` and `python -m py_compile` pass clean on
+  every Python file touched this round.
+- `player_rating.sql` was rendered through a real Jinja2 engine (mocking
+  dbt's `ref()`/`config()`) to resolve every `{% set %}`/`{{ }}` and
+  confirm the template itself is valid, then checked programmatically
+  for balanced parentheses and matched `case`/`end` pairs across the
+  whole rendered SQL.
+- As with previous rounds, no actual `dbt build`/`dbt test` or dashboard
+  run was possible from this sandbox (no database connection, no
+  internet access to install dbt-core) -- please run `dbt run --select
+  player_rating` (or a full `dbt build`) and reload both pages before
+  judging the new ratings/charts, and watch for anything that looks
+  structurally wrong (a SQL Server-specific syntax issue that static
+  review wouldn't catch) rather than assuming it's already been executed.
+
+## Post-delivery fix (Round 4): `dbt build` failing on `player_rating`
+
+You reported the pipeline failing at `dbt build`. Your `run_results.json`
+showed the exact cause: `model.fpl_pipeline.player_rating` errored with
+SQL Server error 241, "Conversion failed when converting date and/or
+time from character string."
+
+Cause: `raw_players.news_added` (which flows through unchanged as
+`p_news_date`) is stored as a text column, not a native datetime column
+-- pandas/SQLAlchemy inferred that type when the FPL API's JSON `null`/
+ISO-8601-string values were first loaded (see `extraction/main_endpoint.py`).
+The new minutes-security gate in `player_rating.sql` compared
+`p_news_date` directly against a computed datetime with `>=`, which
+SQL Server implicitly tries to satisfy by converting the string to a
+datetime -- and the FPL API's actual format (e.g.
+`"2026-09-10T18:15:23.912108Z"`, ISO-8601 with a trailing "Z") isn't one
+SQL Server's implicit conversion understands, so it fails outright
+instead of just being false for that row.
+
+Fixed by using `try_convert(datetime2, pl.p_news_date, 127)` (style 127 =
+ISO-8601 with time zone) instead of relying on implicit conversion --
+this parses the FPL API's actual date format explicitly and returns
+`NULL` for anything it can't parse (including an empty string) rather
+than erroring the whole query. Please re-run `dbt build` (or at least
+`dbt run --select player_rating`) to pick this up.
+
+## Post-delivery fix (Round 4): minutes-security score capped identically for every nailed-on player early in the season
+
+You noticed Haaland and John Egan both showing `minutes_security_score
+= 0.86` despite very different rotation risk. Cause: the gate sized
+"fully nailed on" as a fixed `450` minutes (assumed 5 full gameweeks),
+but it's currently only ~4 gameweeks into the season, so `last5` (top 5
+past gameweeks) actually only contained 4 rows -- every player who'd
+played every available minute so far was capped at `360/450 = 0.86`,
+not because of any real rotation risk but purely because a 5th
+gameweek hadn't happened yet.
+
+Fixed by adding a `last5_window_size` CTE (`select count(*) as gws from
+last5`) and sizing the "fully nailed on" denominator dynamically as
+`gws * MINUTES_PER_MATCH` instead of a hardcoded number -- the bar now
+matches however many gameweeks are actually available, so early-season
+minutes-security scores reflect real rotation risk rather than the
+calendar.
+
+## Round 4 follow-up: team form split into two markers, plus a fixture-difficulty bug fix
+
+Two changes to `player_rating.sql`, requested after you pointed out
+that `team_form_score` (a single blended goals/results figure) wasn't
+telling you much that your own actual/expected points didn't already
+cover, and asked for something more targeted instead.
+
+**`team_form_score` replaced with two separate ~5%-weighted markers**
+(`WEIGHT_TEAM_FORM = 0.10` is now `WEIGHT_TEAM_RESULTS = 0.05` +
+`WEIGHT_TEAM_STRENGTH = 0.05`, so the top-level blend still sums to 1.0):
+
+- `team_results_score` -- the player's team's own match results (win/
+  draw/loss) over the last 5 gameweeks. This is the old `points_score`
+  bucketing, unchanged; the goals-scored/goals-conceded half of the old
+  blend (`goals_score`/`gc_score`, and the position-dependent attacker/
+  defender split that went with it) has been dropped entirely, since a
+  player who is personally scoring or keeping clean sheets already gets
+  full credit for that through their own quality/recent-form scores --
+  folding the team's goals in too was mostly double-counting.
+- `team_strength_score` -- new. A proxy for how strong the player's
+  team is, based on how difficult *other* teams have rated them as an
+  opponent over the same last-5 window (using the fixtures table's
+  difficulty columns from the opponent's perspective, not the team's
+  own). An easy team to play against scores low here (implying
+  weakness); a hard team to play against scores high (implying
+  strength). Ratings run 1-5 and are rescaled linearly onto 0-10
+  (1 -> 0, 3 -> 5, 5 -> 10).
+
+**Bug found and fixed while building the above:** the existing
+`upcoming_fixtures` CTE (which drives `opponent_difficulty_score`, the
+player's own next-5-fixtures ease) had its home/away difficulty
+selection inverted -- it read `case when f_home_team = p_team then
+f_away_diff else f_home_diff end`, which is actually the *opponent's*
+perspective on the fixture, not the player's own team's perspective.
+Confirmed against the convention used consistently elsewhere in the
+project (`StreamLit/queries/player_info.py`'s `get_next_5` and
+`StreamLit/queries/team_data.py`'s `get_team_fixtures`, both of which
+use `case when p_team = f_home_team then f_home_diff else f_away_diff
+end`) and against the original pre-Round-4 model. This meant
+`opponent_difficulty_score` had quietly been built from the wrong side
+of every upcoming fixture since the Round 4 redesign shipped. Fixed to
+match the established convention. The new `team_strength_score` above
+correctly uses the *opponent's*-perspective version of this same logic
+(which is what that marker is supposed to measure), so the two CTEs
+now intentionally read opposite sides of the same columns for
+different reasons -- both are commented in the file to say why.
+
+Not yet actioned: no dbt build was run against a live database from
+this sandbox (same constraint as every previous round -- no DB
+connection available here), so please run `dbt run --select
+player_rating` and reload the dashboard before judging the new
+columns. The file was re-rendered through a real Jinja2 engine and
+checked for balanced parentheses/`case`-`end` pairs before delivery.
+
+## Post-delivery fix (Round 4): `opponent_difficulty_score` identical for every player, regardless of team
+
+You reported every player showing the exact same `opponent_difficulty_score`
+(8.8) no matter which team they were on. The `upcoming_fixtures` CTE
+(the one just rewritten above to read the correct side of each
+fixture) computed each player's own-team difficulty with a single
+`players` JOIN `fixtures` ON `f_home_team = p_team OR f_away_team =
+p_team`. That's logically sound SQL, but the two other places in this
+same file that need "which team played which fixture, home leg vs
+away leg" (`team_results` and `team_as_opponent`) both avoid an
+OR-condition join like that and instead use an explicit `UNION ALL` of
+a home-leg query and an away-leg query -- and neither of those was
+reported as broken. That was the tell: the OR-join is the one thing
+structurally different about the CTE that broke.
+
+Fixed by rewriting `upcoming_fixtures` into the same per-team,
+UNION-ALL shape already used successfully elsewhere in the file:
+a new `team_upcoming_fixtures` CTE computes each team's own next-5
+difficulty (home leg unioned with away leg, no OR), and `opponent_form`
+now joins players to that team-level result and groups by player,
+instead of joining players directly to fixtures with the OR condition.
+Also fixed a second, unrelated bug spotted at the same time:
+`get_star()` in `StreamLit/queries/player_stats.py` still selected the
+old `team_form_score` column, which no longer exists after the
+two-marker split above -- this would have thrown an "invalid column
+name" error on the Player page. It now selects `team_results_score`
+and `team_strength_score` instead.
+
+As with the fix above, no live `dbt build` was run from this sandbox --
+please re-run `dbt run --select player_rating` and reload the Player
+page to confirm `opponent_difficulty_score` now varies sensibly by
+team.

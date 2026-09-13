@@ -5,7 +5,7 @@ fpl_pipeline:
       driver: "ODBC Driver 18 for SQL Server"
       server: host.docker.internal
       port: 1433
-      database: FPL
+      database: fpl
       schema: raw
       user: "{{ env_var('FPL_DB_USER') }}"
       password: "{{ env_var('FPL_DB_PASSWORD') }}"  

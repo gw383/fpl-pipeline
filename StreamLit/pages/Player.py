@@ -6,6 +6,7 @@ import base64
 import pandas as pd
 import streamlit as st
 
+from charts.expected_vs_actual import expected_vs_actual_chart
 from charts.gameweek_trend import gameweek_trend
 from charts.minutes_donut import minutes_donut_chart
 from charts.player_radar import player_radar
@@ -206,6 +207,9 @@ assists = int(stat_row["assists"])
 pens_saved = int(stat_row["pens_saved"])
 pens_missed = int(stat_row["pens_missed"])
 goals_conceded = int(stat_row["goals_conceded"])
+xg = float(stat_row["xg"]) if pd.notna(stat_row["xg"]) else 0.0
+xa = float(stat_row["xa"]) if pd.notna(stat_row["xa"]) else 0.0
+xga = float(stat_row["xga"]) if pd.notna(stat_row["xga"]) else 0.0
 
 rank_row = ranks.iloc[0]
 points_rank = int(rank_row["points_rank"])
@@ -413,5 +417,12 @@ with c3:
     st.plotly_chart(fig_minutes, use_container_width=True, key="minutes")
 with c4:
     st.plotly_chart(fig_gameweek, use_container_width=True, key="gameweek_trend")
+
+# ---------------------------------------------------------------------------
+# Expected vs actual (is this player lucky or clinical?)
+# ---------------------------------------------------------------------------
+
+fig_expected = expected_vs_actual_chart(goals, xg, assists, xa, goals_conceded, xga, position)
+st.plotly_chart(fig_expected, use_container_width=True, key="expected_vs_actual")
 
 fixture_card(next_5)

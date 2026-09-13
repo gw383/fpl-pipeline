@@ -5,9 +5,11 @@ import base64
 
 import streamlit as st
 
+from components.differential_card import differential_card
 from components.news import news_card
+from components.star_card import star_card
 from components.team_fixtures import team_fixture_card
-from queries.player_stats import get_star_top20
+from queries.player_stats import get_in_form_differentials, get_star_top5_by_position
 from queries.team_data import get_best_11, get_latest_news, get_team_fixtures
 
 PITCH_IMAGE_PATH = "images/pitch.jpg"
@@ -70,63 +72,14 @@ team_order = (
     .tolist()
 )
 
-recommendations = get_star_top20()
+recommendations = get_star_top5_by_position()
+differentials = get_in_form_differentials()
 
 # ---------------------------------------------------------------------------
 # Main layout
 # ---------------------------------------------------------------------------
 
-c1, c2, c3, c4 = st.columns([0.5, 1.75, 1.25, 1], gap="small")
-
-# -----------------------------------------------------------------
-# Top Players
-# -----------------------------------------------------------------
-
-with c1:
-    st.subheader("Top rated players")
-
-    if recommendations.empty:
-        st.caption("No ratings available right now.")
-
-    for _, player in recommendations.iterrows():
-        rating = player["rating"] if player["rating"] is not None else 0
-        st.html(
-            f"""
-            <div style="
-                display:flex;
-                align-items:center;
-                background:white;
-                border-radius:6px;
-                padding:3px 6px;
-                margin-bottom:2px;
-                height:24px;
-                width:230px;
-                box-shadow:0 1px 2px rgba(0,0,0,0.08);
-            ">
-
-                <div style="
-                    width:165px;
-                    font-size:12px;
-                    font-weight:700;
-                    white-space:nowrap;
-                    overflow:hidden;
-                    text-overflow:ellipsis;
-                ">
-                    {player['player']}
-                </div>
-
-                <div style="
-                    margin-left:auto;
-                    font-size:12px;
-                    font-weight:700;
-                    color:#333;
-                ">
-                    {rating:.2f}
-                </div>
-
-            </div>
-            """
-        )
+c2, c3, c4 = st.columns([1.75, 1.25, 1], gap="small")
 
 # -----------------------------------------------------------------
 # Best XI
@@ -313,3 +266,79 @@ with c4:
     else:
         for _, row in news.iterrows():
             st.html(news_card(row))
+
+# -----------------------------------------------------------------
+# Top rated players
+# -----------------------------------------------------------------
+
+st.markdown("---")
+st.subheader("Top rated players")
+st.caption(
+    "The best-looking players going forward on the star rating alone, top "
+    "5 per position -- price isn't a factor in this rating at all, and "
+    "positions are ranked separately rather than mixed into one list (a "
+    "goalkeeper and a forward aren't a fair comparison on the same list)."
+)
+
+if recommendations.empty:
+    st.caption("No ratings available right now.")
+else:
+    position_sections = [
+        (1, "Goalkeepers"),
+        (2, "Defenders"),
+        (3, "Midfielders"),
+        (4, "Forwards"),
+    ]
+    pos_cols = st.columns(len(position_sections), gap="small")
+
+    for col, (position_id, label) in zip(pos_cols, position_sections):
+        with col:
+            st.markdown(f"**{label}**")
+            position_players = recommendations[recommendations["p_position"] == position_id]
+
+            if position_players.empty:
+                st.caption("No ratings available.")
+            else:
+                cards_html = "".join(
+                    star_card(row) for _, row in position_players.iterrows()
+                )
+                st.html(
+                    f"""
+                    <div style="
+                        display:flex;
+                        flex-direction:column;
+                        gap:6px;
+                    ">
+                        {cards_html}
+                    </div>
+                    """
+                )
+
+# -----------------------------------------------------------------
+# In-form differentials
+# -----------------------------------------------------------------
+
+st.markdown("---")
+st.subheader("In-form differentials")
+st.caption(
+    "Low-ownership players (10% or less) currently in good recent form -- "
+    "worth a look if you're after a punt rather than a template pick."
+)
+
+if differentials.empty:
+    st.caption("No differentials meet the criteria right now.")
+else:
+    cards_html = "".join(
+        differential_card(row) for _, row in differentials.iterrows()
+    )
+    st.html(
+        f"""
+        <div style="
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+        ">
+            {cards_html}
+        </div>
+        """
+    )

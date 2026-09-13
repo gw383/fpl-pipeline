@@ -50,7 +50,8 @@ def _range_filter_sql(range_filter: str, gw_column: str = "gw_id") -> str:
 def get_player_stats(selected_player: str, range_filter: str) -> pd.DataFrame:
     """Season (or range-filtered) totals for one player, plus the FPL
     fantasy-points contribution of each stat category (the pf_* columns
-    feed the points-breakdown chart).
+    feed the points-breakdown chart), and the underlying xG/xA/xGA totals
+    (feed the expected-vs-actual chart).
 
     The pf_* breakdown used to be recomputed here, in Python-generated
     SQL, on every page load. It's now summed straight out of
@@ -77,6 +78,9 @@ def get_player_stats(selected_player: str, range_filter: str) -> pd.DataFrame:
         sum(ps.pg_pens_saved)            as pens_saved,
         sum(ps.pg_goals_conceded)        as goals_conceded,
         sum(ps.pg_pens_missed)           as pens_missed,
+        sum(ps.pg_xG)                    as xg,
+        sum(ps.pg_xA)                    as xa,
+        sum(ps.pg_xGa)                   as xga,
         sum(pp.pf_minutes)            as pf_minutes,
         sum(pp.pf_cs)                 as pf_cs,
         sum(pp.pf_bonus)              as pf_bonus,
@@ -257,7 +261,8 @@ def get_rank_metrics(selected_player: str, range_filter: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def get_star(selected_player: str) -> pd.DataFrame:
-    """The "star" recommendation score (out of 10) for one player.
+    """The "star" recommendation score (out of 10) for one player, plus
+    every scoring ingredient behind it.
 
     This used to independently recompute the whole scoring pipeline
     (season form, last-5 form, team form, fixture difficulty) in
@@ -266,19 +271,25 @@ def get_star(selected_player: str) -> pd.DataFrame:
     Both now just read one row out of analytics.player_rating, a dbt
     model that is the single canonical implementation of this scoring
     model (see transformation/models/analytics/player_rating.sql for the
-    full formula and the reconciliation notes). It also fixes a latent
-    bug in the old version of this query: "last 5" / "next 5" gameweeks
-    used to be computed relative to a hardcoded stub date ('2026-01-01')
-    rather than the actual current date.
+    full formula, the tunable weights, and the actual-vs-expected-points
+    design). It also fixes a latent bug in the old version of this query:
+    "last 5" / "next 5" gameweeks used to be computed relative to a
+    hardcoded stub date ('2026-01-01') rather than the actual current date.
     """
     query = f"""
     select
         player,
         p_position,
-        season_form_score,
-        last5_form_score,
-        team_form_score,
+        season_actual_score,
+        season_expected_score,
+        quality_score,
+        last5_actual_score,
+        last5_expected_score,
+        recent_form_score,
+        team_results_score,
+        team_strength_score,
         opponent_difficulty_score,
+        minutes_security_score,
         star
     from analytics.player_rating
     where player = '{selected_player}'
@@ -287,25 +298,62 @@ def get_star(selected_player: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=600)
-def get_star_top20() -> pd.DataFrame:
-    """The top 20 players league-wide by "star" rating, for the Home
-    page's "Top rated players" list.
+def get_star_top5_by_position() -> pd.DataFrame:
+    """The top 5 players by "star" rating, separately per position, for
+    the Home page's "Top rated players" section.
 
-    Previously used a second, divergent copy of the scoring formula
-    (no fixture-difficulty term, different weights, a simpler team-form
-    calculation) from get_star's Player-page version -- so the same
-    player could show a different rating depending which page you were
-    on. Both now read analytics.player_rating, so a player's rating is
-    always the same number wherever it appears. See
-    transformation/models/analytics/player_rating.sql for the
-    consolidation decision.
+    Replaces the old flat top-20-across-all-positions list
+    (get_star_top20): comparing goalkeepers against forwards on the same
+    single list wasn't a fair comparison (see the "why does a defender
+    outrate Haaland" discussion in the project's chat history / CHANGELOG)
+    -- position-by-position top 5s are a more honest read of "who's the
+    best pick at each position right now".
     """
     query = """
-    select top (20)
+    with ranked as (
+        select
+            player,
+            p_position,
+            star as rating,
+            row_number() over (partition by p_position order by star desc) as position_rank
+        from analytics.player_rating
+    )
+    select
         player,
         p_position,
-        star as rating
-    from analytics.player_rating
-    order by star desc
+        rating
+    from ranked
+    where position_rank <= 5
+    order by p_position, position_rank
+    """
+    return run_query(query)
+
+
+@st.cache_data(ttl=600)
+def get_in_form_differentials(max_ownership: float = 10.0, limit: int = 20) -> pd.DataFrame:
+    """Low-ownership players currently in good recent form -- candidates
+    worth a look as differentials, for the Home page.
+
+    "In form" here is recent_form_score specifically (analytics.player_rating's
+    blended actual/expected points-per-90 over the last 5 gameweeks), not
+    the overall star rating -- star also folds in fixture difficulty and
+    team form, which would drown out "is this player playing well right
+    now" with "are their next few fixtures favourable". minutes_security_score
+    is still used as a floor filter (not just a display value) so a
+    one-off cameo goal doesn't show up here as a nailed-on differential.
+    """
+    query = f"""
+    select top ({limit})
+        pr.player,
+        pr.p_position,
+        pl.p_ownership     as ownership,
+        pl.p_price          as price,
+        pr.recent_form_score,
+        pr.star
+    from analytics.player_rating pr
+    left join analytics.players pl on pl.p_id = pr.p_id
+    where pl.p_ownership <= {max_ownership}
+      and pr.minutes_security_score >= 0.5
+    order by pr.recent_form_score desc
     """
     return run_query(query)
