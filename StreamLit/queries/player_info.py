@@ -54,25 +54,47 @@ def get_player_info(selected_player: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def get_next_5(selected_player: str) -> pd.DataFrame:
-    """The next 5 upcoming fixtures for `selected_player`'s team."""
+    """The next 5 upcoming fixtures for `selected_player`'s team.
+
+    Fixed: this used to filter on a hardcoded literal date
+    ('2026-04-19') rather than the actual current date, so the strip
+    was permanently stuck showing whatever gameweeks happened to fall
+    after that one fixed point -- never advancing as the season moves
+    on. Rewritten around a next5-gameweeks CTE keyed off getdate(),
+    the same pattern already used successfully elsewhere in this
+    project (transformation/models/analytics/player_rating.sql's next5
+    CTE, and get_team_fixtures below), instead of a raw date literal.
+
+    Fixed again: the first version of this rewrite joined next5 back
+    to analytics.gameweeks a second time (to sit alongside the fixtures/
+    players/teams joins) even though nothing from that second copy of
+    gameweeks was actually being selected -- next5 already has gw_id.
+    That extra join gave SQL Server two same-named gw_id columns in
+    scope at once, so the unqualified "gw_id" in both the join
+    condition and the select list was rejected outright as ambiguous
+    (error 209) rather than silently picking one. Removed the
+    redundant join entirely and qualified next5.gw_id explicitly.
+    """
     query = f"""
+    with next5 as (
+        select top (5) gw_id
+        from analytics.gameweeks
+        where gw_deadline_time > getdate()
+        order by gw_id
+    )
     select
-        gw_id as gw,
+        next5.gw_id as gw,
         case when p_team = f_home_team then 'H' else 'A' end as venue,
-        team_short_name as opponent,
+        t.team_short_name as opponent,
         case when p_team = f_home_team then f_home_diff else f_away_diff end as difficulty
-    from analytics.gameweeks
-    left join analytics.fixtures on f_gameweek = gw_id
+    from next5
+    left join analytics.fixtures on f_gameweek = next5.gw_id
     left join analytics.players
         on p_team = f_home_team
         or p_team = f_away_team
-    left join analytics.teams
-        on team_id = case
-            when p_team = f_home_team then f_away_team
-            else f_home_team
-        end
-    where gw_deadline_time > '2026-04-19'
-      and p_full_name = '{selected_player}'
+    left join analytics.teams t
+        on t.team_id = case when p_team = f_home_team then f_away_team else f_home_team end
+    where p_full_name = '{selected_player}'
     order by gw
     """
     return run_query(query)

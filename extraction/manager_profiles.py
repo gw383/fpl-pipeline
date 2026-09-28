@@ -33,6 +33,11 @@ def manager_profiles(engine: Engine, entry_ids: list[int]) -> None:
                 "overall_points": data.get("summary_overall_points"),
                 "overall_rank": data.get("summary_overall_rank"),
                 "value": data.get("last_deadline_value"),
+                # Added alongside "value" (squad value) for the My Team
+                # page -- FPL reports these as two separate figures
+                # (squad value + money in the bank), and a manager's true
+                # budget is the sum of both, not "value" alone.
+                "bank": data.get("last_deadline_bank"),
                 "load_timestamp": utc_now(),
             })
             print(f"Loaded manager {entry_id}")

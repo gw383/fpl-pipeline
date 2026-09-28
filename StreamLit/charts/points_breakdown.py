@@ -3,9 +3,7 @@ import pandas as pd
 import plotly.express as px
 from plotly.graph_objects import Figure
 
-CHART_BACKGROUND = "#f2f2f2"
-POSITIVE_COLOR = "#2ecc71"
-NEGATIVE_COLOR = "#e74c3c"
+from theme import NEGATIVE_COLOUR, POSITIVE_COLOUR, apply_chart_theme
 
 
 def points_breakdown_chart(
@@ -59,22 +57,19 @@ def points_breakdown_chart(
         text="Label",
         title="Points Breakdown",
         color_discrete_map={
-            "Positive": POSITIVE_COLOR,
-            "Negative": NEGATIVE_COLOR,
+            "Positive": POSITIVE_COLOUR,
+            "Negative": NEGATIVE_COLOUR,
         },
     )
 
     fig.update_traces(textposition="outside", marker_line_width=0)
 
+    apply_chart_theme(fig, height=420)
     fig.update_layout(
-        paper_bgcolor=CHART_BACKGROUND,
-        plot_bgcolor=CHART_BACKGROUND,
         showlegend=False,
         title_x=0.5,
         xaxis_title="Fantasy Points",
         yaxis_title="",
-        height=430,
-        margin=dict(l=20, r=20, t=60, b=20),
     )
 
     fig.update_xaxes(showgrid=False, zeroline=False)

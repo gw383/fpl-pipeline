@@ -1,7 +1,10 @@
-"""A player's next 5 fixtures, colour-coded by difficulty (used on the Player page)."""
+"""A player's next 5 fixtures, colour-coded by difficulty (used on the
+Player and Compare pages).
+"""
 import streamlit as st
 
 from colours import DIFFICULTY_COLOURS
+from theme import PAGE_BG, RADIUS_SM, TEXT_MUTED
 
 
 def fixture_card(fixtures_df) -> None:
@@ -23,6 +26,9 @@ def fixture_card(fixtures_df) -> None:
                 <div style="
                     text-align:center;
                     font-weight:700;
+                    font-size:12px;
+                    letter-spacing:0.04em;
+                    color:{TEXT_MUTED};
                     margin-bottom:8px;
                 ">
                     GW{gw}
@@ -33,16 +39,18 @@ def fixture_card(fixtures_df) -> None:
 
             if len(games) == 0:
                 st.markdown(
-                    """
+                    f"""
                     <div style="
-                        background:#ececec;
+                        background:{PAGE_BG};
+                        border:1px dashed rgba(11,11,11,0.14);
                         height:90px;
-                        border-radius:10px;
+                        border-radius:{RADIUS_SM};
                         display:flex;
                         align-items:center;
                         justify-content:center;
-                        color:#777;
+                        color:{TEXT_MUTED};
                         font-weight:600;
+                        font-size:13px;
                     ">
                         Blank
                     </div>
@@ -57,7 +65,7 @@ def fixture_card(fixtures_df) -> None:
                     <div style="
                         background:{DIFFICULTY_COLOURS[fixture['difficulty']]};
                         height:90px;
-                        border-radius:10px;
+                        border-radius:{RADIUS_SM};
                         display:flex;
                         flex-direction:column;
                         align-items:center;
@@ -65,10 +73,10 @@ def fixture_card(fixtures_df) -> None:
                         color:white;
                         font-weight:700;
                     ">
-                        <span style="font-size:24px;">
+                        <span style="font-size:22px;">
                             {fixture['opponent']}
                         </span>
-                        <span style="font-size:16px;">
+                        <span style="font-size:14px;opacity:0.9;">
                             {fixture['venue']}
                         </span>
                     </div>
@@ -82,21 +90,18 @@ def fixture_card(fixtures_df) -> None:
                         f"""
                         <div style="
                             background:{DIFFICULTY_COLOURS[fixture['difficulty']]};
-                            height:42px;
-                            border-radius:10px;
+                            border-radius:{RADIUS_SM};
                             display:flex;
                             align-items:center;
                             justify-content:space-between;
-                            padding:0 12px;
+                            padding:4px 12px;
                             color:white;
                             font-weight:700;
                             margin-bottom:6px;
                         ">
                             <span>{fixture['opponent']}</span>
-                            <span>{fixture['venue']}</span>
+                            <span style="opacity:0.9;">{fixture['venue']}</span>
                         </div>
                         """,
                         unsafe_allow_html=True,
                     )
-
-    st.markdown("</div>", unsafe_allow_html=True)

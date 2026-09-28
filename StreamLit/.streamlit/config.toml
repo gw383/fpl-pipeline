@@ -1,0 +1,14 @@
+# Streamlit theme -- matches the palette/typography defined in theme.py
+# (StreamLit/theme.py) so Streamlit's own chrome (widgets, sidebar page
+# nav, buttons) lines up with the hand-built cards and charts rather than
+# clashing with Streamlit's default theme.
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+backgroundColor = "#f7f7f5"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#0b0b0b"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false

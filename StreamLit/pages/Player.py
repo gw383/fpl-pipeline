@@ -1,5 +1,5 @@
 """Player deep-dive page: profile banner, headline metrics, and four
-charts (points breakdown, radar profile, minutes donut, gameweek trend).
+figures (points breakdown, radar profile, minutes meter, gameweek trend).
 """
 import base64
 
@@ -8,14 +8,16 @@ import streamlit as st
 
 from charts.expected_vs_actual import expected_vs_actual_chart
 from charts.gameweek_trend import gameweek_trend
-from charts.minutes_donut import minutes_donut_chart
 from charts.player_radar import player_radar
 from charts.points_breakdown import points_breakdown_chart
 from components.fixture_card import fixture_card
 from components.metric_card import metric_card
+from components.minutes_meter import minutes_meter_html
+from components.rating_breakdown import rating_breakdown_html
 from player_utils import news_banner_html, per_90, recommendation_stars
 from queries.player_info import get_next_5, get_player_info, get_players
 from queries.player_stats import get_best_stats, get_gwk, get_player_stats, get_rank_metrics, get_star
+from theme import BORDER, RADIUS, SHADOW_CARD, inject_base_css, masthead_html, section_header_html
 
 # ---------------------------------------------------------------------------
 # Page config + styling
@@ -23,88 +25,47 @@ from queries.player_stats import get_best_stats, get_gwk, get_player_stats, get_
 
 st.set_page_config(page_title="FPL Analytics", layout="wide")
 
+st.markdown(inject_base_css(), unsafe_allow_html=True)
+
 st.markdown(
-    """
+    f"""
     <style>
 
-    .stApp {
-        background-color: #f2f2f2;}
-
-    .block-container {
-        padding-top: 4rem;
-        padding-left: 3rem;
-        padding-right: 3rem;}
-
-    .player-header {
-        height: 100px;
+    .player-header {{
+        height: 140px;
         width: 100%;
         position: relative;
         background: #ffffff;
-        border-radius: 0 0 20px 20px;
+        border-radius: {RADIUS};
         overflow: hidden;
-        margin-bottom: 30px;}
+        margin-bottom: 22px;
+        box-shadow: {SHADOW_CARD};
+        border: 1px solid {BORDER};}}
 
-    .player-primary {
+    .player-primary {{
         position: absolute;
         width: 100%;
-        height: 100%;}
+        height: 100%;}}
 
-    .player-secondary {
+    .player-secondary {{
         position: absolute;
         right: 5%;
         top: 0;
         height: 100%;
-        width: 15%;}
+        width: 15%;}}
 
-    .search-box {
+    .search-box {{
         position: absolute;
         top: 25px;
         left: 40px;
-        z-index: 2;}
-
-    div[data-testid="stSelectbox"] {
-        margin-top:10px;}
-
-
-    /* Both dropdowns (Player and Range) */
-    div[data-baseweb="select"] > div {
-        background-color: #ffffff;
-        border: 1px solid #d9d9d9;
-        border-radius: 8px;
-        box-shadow: none;}
-
-    /* Text inside the dropdown */
-    div[data-baseweb="select"] span {
-        color: #222222;}
-
-    /* Search input when typing in Player box */
-    div[data-baseweb="select"] input {
-        background-color: white;
-        color: #222222;}
-
-    /* Dropdown menu */
-    div[role="listbox"] {
-        background-color: white;
-        border-radius: 8px;
-        border: 1px solid #d9d9d9;}
-
-    /* Each option */
-    div[role="option"] {
-        background-color: white;
-        color: #222222;}
-
-    /* Hover effect */
-    div[role="option"]:hover {
-        background-color: #f0f0f0;}
-
-    /* Selected option */
-    div[aria-selected="true"] {
-        background-color: #e9ecef;}
+        z-index: 2;}}
 
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+st.html(masthead_html())
 
 # ---------------------------------------------------------------------------
 # Player + range selection
@@ -222,8 +183,12 @@ defcons_rank = int(rank_row["defcons_rank"])
 dcp90_rank = int(rank_row["dcp90_rank"])
 pp90_rank = int(rank_row["pp90_rank"])
 saved_pens_rank = int(rank_row["saved_pens_rank"])
-ppm90_rank = int(rank_row["ppm90_rank"])
-ppm90_value = float(rank_row["ppm90_value"])
+form_rank = int(rank_row["form_rank"])
+# Note: get_rank_metrics also returns ppm90_rank/ppm90_value (the old
+# "Value" card's rank/percentile) -- no longer unpacked here since the
+# "Value" metric card they fed was replaced by "Form" below (see the
+# Round 7 note by the metric-card row). The query itself is left alone
+# rather than trimmed, in case a future page wants that figure back.
 
 logo_base64 = base64.b64encode(bytes(logo)).decode()
 
@@ -282,6 +247,7 @@ st.html(
             transform:translateY(-50%);
             color:white;
             z-index:2;
+            max-width:65%;
         ">
 
             <h1 style="
@@ -289,6 +255,9 @@ st.html(
                 font-size:38px;
                 font-weight:700;
                 line-height:1.05;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
             ">
                 {selected_player}
                 <span style="
@@ -306,14 +275,20 @@ st.html(
                 font-weight:500;
                 opacity:0.9;
                 line-height:1.2;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
             ">
                 {team} • {position} • £{price}m
             </p>
 
-        </div>
+            <!-- Player news: a normal-flow line in this same block (not a
+                 floating box elsewhere in the header), so it can never
+                 overlap the name/team/price lines above regardless of
+                 how long either one is. -->
+            {news_banner_html(news)}
 
-        <!-- Player news -->
-        {news_banner_html(news)}
+        </div>
 
         <!-- Secondary colour / club badge -->
         <div class="player-secondary" style="
@@ -344,18 +319,46 @@ st.html(
 )
 
 # ---------------------------------------------------------------------------
+# Rating breakdown -- same click-to-expand pattern as the Home page's
+# star/differential cards (components/rating_breakdown.py), just with
+# one toggle for the one player this page is already about, right under
+# the header where the star itself is shown.
+# ---------------------------------------------------------------------------
+
+_breakdown_key = f"player_breakdown_{selected_player}"
+_breakdown_expanded = st.session_state.get(_breakdown_key, False)
+if st.button(
+    "Hide rating breakdown ▴" if _breakdown_expanded else "Show rating breakdown ▾",
+    key=f"btn_{_breakdown_key}",
+):
+    st.session_state[_breakdown_key] = not _breakdown_expanded
+    _breakdown_expanded = not _breakdown_expanded
+if _breakdown_expanded:
+    st.html(rating_breakdown_html(star_ranking.iloc[0], star=star))
+
+# ---------------------------------------------------------------------------
 # Headline metric cards (goalkeepers see a save-oriented set)
 # ---------------------------------------------------------------------------
 
-st.markdown("---")
+st.html(
+    section_header_html("Season snapshot", f"{range_filter.lower()} -- rank shown vs. all players in the same position.")
+)
 
+# Round 7 note: the "Value (Points per million per 90)" card used to sit
+# here (h2 in both layouts below). It's been replaced with "Form" -- FPL's
+# own rolling form figure (already fetched from get_player_info as `form`
+# and, until now, unused anywhere on this page) -- since value-for-money
+# is a budgeting question rather than a "how is this player playing right
+# now" one, and this page is otherwise entirely about the latter. Price
+# is still shown in the header banner above for anyone who wants to do
+# their own value math.
 if position == "Goalkeeper":
     h1, h2, h3, h4, h5 = st.columns(5)
 
     with h1:
         metric_card("Points", points, points_rank)
     with h2:
-        metric_card("Value (Points per million per 90)", f"{ppm90_value:.1f}%", ppm90_rank)
+        metric_card("Form", f"{form:.1f}", form_rank)
     with h3:
         metric_card("Saves / 90", f"{saves_p90:.1f}", saves_rank)
     with h4:
@@ -368,7 +371,7 @@ else:
     with h1:
         metric_card("Points", points, points_rank)
     with h2:
-        metric_card("Value (Points per million per 90)", f"{ppm90_value:.1f}%", ppm90_rank)
+        metric_card("Form", f"{form:.1f}", form_rank)
     with h3:
         metric_card("Goals", goals, goals_rank)
     with h4:
@@ -383,6 +386,8 @@ st.markdown("---")
 # ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
+
+st.html(section_header_html("Performance breakdown"))
 
 fig_breakdown, total_points_from_breakdown = points_breakdown_chart(
     pf_goals, pf_assists, pf_minutes, pf_bonus, pf_cs, pf_defcon,
@@ -404,25 +409,40 @@ fig_radar = player_radar(
     primary,
 )
 
-fig_minutes = minutes_donut_chart(minutes, minutes_not_played)
 fig_gameweek = gameweek_trend(gwk_points, primary)
 
 c1, c2, c3, c4 = st.columns([1.2, 1, 1, 1.2])
 
-with c1:
+with c1, st.container(border=True):
     st.plotly_chart(fig_breakdown, use_container_width=True, key="points_breakdown")
-with c2:
+with c2, st.container(border=True):
     st.plotly_chart(fig_radar, use_container_width=True, key="player_radar")
-with c3:
-    st.plotly_chart(fig_minutes, use_container_width=True, key="minutes")
-with c4:
+with c3, st.container(border=True):
+    # A meter, not a chart -- "minutes played vs. minutes not played"
+    # is a single ratio against a limit, which reads faster as a meter
+    # than as a 2-slice donut (see components/minutes_meter.py).
+    st.html(minutes_meter_html(minutes, minutes_not_played))
+with c4, st.container(border=True):
     st.plotly_chart(fig_gameweek, use_container_width=True, key="gameweek_trend")
 
 # ---------------------------------------------------------------------------
 # Expected vs actual (is this player lucky or clinical?)
 # ---------------------------------------------------------------------------
 
-fig_expected = expected_vs_actual_chart(goals, xg, assists, xa, goals_conceded, xga, position)
-st.plotly_chart(fig_expected, use_container_width=True, key="expected_vs_actual")
+st.html(
+    section_header_html(
+        "Process vs outcome",
+        "Actual output next to the underlying expected numbers (xG/xA/xGA) -- "
+        "a player consistently ahead of their expected figures is finishing "
+        "chances well rather than just running hot.",
+    )
+)
 
-fixture_card(next_5)
+with st.container(border=True):
+    fig_expected = expected_vs_actual_chart(goals, xg, assists, xa, goals_conceded, xga, position)
+    st.plotly_chart(fig_expected, use_container_width=True, key="expected_vs_actual")
+
+st.html(section_header_html("Upcoming fixtures"))
+
+with st.container(border=True):
+    fixture_card(next_5)

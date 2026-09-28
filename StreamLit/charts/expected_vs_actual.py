@@ -14,9 +14,7 @@ import pandas as pd
 import plotly.express as px
 from plotly.graph_objects import Figure
 
-CHART_BACKGROUND = "#f2f2f2"
-ACTUAL_COLOR = "#2ecc71"
-EXPECTED_COLOR = "#3498db"
+from theme import ACTUAL_COLOUR, EXPECTED_COLOUR, GRIDLINE, apply_chart_theme
 
 # Positions (as shown on the Player page, i.e. StreamLit/queries/player_info.py's
 # pos_name) that also get a goals-conceded-vs-xGA bar -- conceding goals
@@ -60,25 +58,22 @@ def expected_vs_actual_chart(
         text="Value",
         title="Actual vs Expected",
         color_discrete_map={
-            "Actual": ACTUAL_COLOR,
-            "Expected": EXPECTED_COLOR,
+            "Actual": ACTUAL_COLOUR,
+            "Expected": EXPECTED_COLOUR,
         },
     )
 
     fig.update_traces(textposition="outside", marker_line_width=0)
 
+    apply_chart_theme(fig, height=400)
     fig.update_layout(
-        paper_bgcolor=CHART_BACKGROUND,
-        plot_bgcolor=CHART_BACKGROUND,
         legend_title_text="",
         title_x=0.5,
         xaxis_title="",
         yaxis_title="Total",
-        height=400,
-        margin=dict(l=20, r=20, t=60, b=20),
     )
 
     fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(showgrid=True, gridcolor="#dddddd", zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor=GRIDLINE, zeroline=False)
 
     return fig

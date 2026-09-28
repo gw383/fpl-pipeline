@@ -1,34 +1,50 @@
 """A single in-form differential player card for the Home page."""
-
-POSITION_LABELS = {
-    1: "GKP",
-    2: "DEF",
-    3: "MID",
-    4: "FWD",
-}
+from theme import (
+    AQUA,
+    BORDER,
+    POSITION_COLOURS,
+    POSITION_LABELS,
+    RADIUS_SM,
+    SHADOW_CARD,
+    SURFACE,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+)
 
 
 def differential_card(row) -> str:
     """Render one differential (low-ownership, in-form player) as an
-    HTML card: name, position, price, ownership % and recent-form score.
+    HTML card: name, position, price, ownership % and quality score.
+
+    Round 7 note: this used to show recent_form_score, the old rating
+    model's dedicated last-5-gameweek ingredient. That ingredient no
+    longer exists as a separate column -- player_rating.sql's rewrite
+    folded "is this player playing well lately" into quality_score itself
+    (a recency-weighted rate that leans heavily on recent gameweeks
+    without a hard cutoff), so this card now shows that instead.
     """
-    position_label = POSITION_LABELS.get(int(row["p_position"]), "")
+    position_id = int(row["p_position"])
+    position_label = POSITION_LABELS.get(position_id, "")
+    accent = POSITION_COLOURS.get(position_id, TEXT_MUTED)
     ownership = float(row["ownership"]) if row["ownership"] is not None else 0.0
     price = float(row["price"]) if row["price"] is not None else 0.0
-    recent_form = float(row["recent_form_score"]) if row["recent_form_score"] is not None else 0.0
+    quality = float(row["quality_score"]) if row["quality_score"] is not None else 0.0
 
     return f"""
     <div style="
-        background:white;
-        border-radius:8px;
-        padding:8px 10px;
-        width:150px;
-        box-shadow:0 1px 3px rgba(0,0,0,0.08);
+        background:{SURFACE};
+        border:1px solid {BORDER};
+        border-left:3px solid {accent};
+        border-radius:{RADIUS_SM};
+        padding:9px 12px;
+        width:160px;
+        box-shadow:{SHADOW_CARD};
     ">
 
         <div style="
             font-size:13px;
             font-weight:700;
+            color:{TEXT_PRIMARY};
             white-space:nowrap;
             overflow:hidden;
             text-overflow:ellipsis;
@@ -36,25 +52,26 @@ def differential_card(row) -> str:
             {row['player']}
         </div>
 
-        <div style="font-size:11px;color:#777;margin-top:2px;">
-            {position_label} • £{price}m
+        <div style="font-size:11px;color:{TEXT_MUTED};margin-top:2px;font-weight:600;">
+            {position_label} &middot; &pound;{price}m
         </div>
 
         <div style="
             display:flex;
             justify-content:space-between;
             align-items:center;
-            margin-top:6px;
+            margin-top:8px;
         ">
-            <div style="font-size:11px;color:#555;">
+            <div style="font-size:11px;color:{TEXT_MUTED};">
                 {ownership:.1f}% owned
             </div>
             <div style="
                 font-size:12px;
                 font-weight:700;
-                color:#2ecc71;
+                color:{AQUA};
+                font-variant-numeric:tabular-nums;
             ">
-                {recent_form:.1f}
+                {quality:.1f}
             </div>
         </div>
 

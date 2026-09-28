@@ -181,6 +181,11 @@ def get_rank_metrics(selected_player: str, range_filter: str) -> pd.DataFrame:
     """`selected_player`'s rank against same-position players across a
     range of stats, plus their "points per million per 90" value
     percentile -- feeds every metric card's "#N" rank badge.
+
+    Every rank column is a row_number() -- one distinct rank per player,
+    ties on the underlying stat broken by current form -- rather than a
+    dense_rank() that gives joint leaders the same number. See the note
+    on ranked_players below.
     """
     query = f"""
     with range_info as (
@@ -206,7 +211,15 @@ def get_rank_metrics(selected_player: str, range_filter: str) -> pd.DataFrame:
             sum(pg_defcons) * 90.0 / nullif(sum(pg_minutes), 0)                as dcp90,
             sum(pg_points) * 90.0 / nullif(sum(pg_minutes), 0)                 as pp90,
             (sum(pg_points) * 90.0 / nullif(sum(pg_minutes), 0))
-                / nullif(max(p_price), 0)                                      as ppm90
+                / nullif(max(p_price), 0)                                      as ppm90,
+            -- p_form is a scalar per player (FPL's own rolling form
+            -- figure), not something to sum across gameweeks -- max()
+            -- here is just how SQL Server lets a functionally-dependent
+            -- column ride along in a GROUP BY query, same as p_price
+            -- above for ppm90. Backs the Player page's "Form" metric
+            -- card (see pages/Player.py), which replaced the old
+            -- "Value (Points per million per 90)" card.
+            max(p_form)                                                        as form_value
         from analytics.player_stats
         left join analytics.players on pg_id = p_id
         left join analytics.positions on p_position = pos_id
@@ -235,20 +248,34 @@ def get_rank_metrics(selected_player: str, range_filter: str) -> pd.DataFrame:
         from player_values p
     ),
 
+    -- Round 7.3 note: these used to be dense_rank(), which gives joint
+    -- top scorers on a metric the same rank number (e.g. two players
+    -- tied on 10 goals both showing "#1", then the next player down
+    -- jumping straight to "#2" -- densely packed, no gaps, but not one
+    -- rank per player). Switched to row_number(), which always assigns
+    -- exactly one distinct rank per player -- ties on the primary stat
+    -- are broken by form_value (whoever's in better form right now
+    -- ranks above an equally-matched but out-of-form player), and a
+    -- final tiebreak on p_full_name keeps the ordering fully
+    -- deterministic (so a genuine dead-heat on both stat and form
+    -- doesn't produce a different order on every cache refresh).
+    -- form_rank's own tiebreak is points rather than form_value again,
+    -- since using a metric as its own tiebreak would be meaningless.
     ranked_players as (
         select
             p.*,
-            dense_rank() over (partition by p.p_position order by p.points desc)     as points_rank,
-            dense_rank() over (partition by p.p_position order by p.goals desc)      as goals_rank,
-            dense_rank() over (partition by p.p_position order by p.assists desc)    as assists_rank,
-            dense_rank() over (partition by p.p_position order by p.bonus desc)      as bonus_rank,
-            dense_rank() over (partition by p.p_position order by p.savesp90 desc)   as saves_rank,
-            dense_rank() over (partition by p.p_position order by p.saved_pens desc) as saved_pens_rank,
-            dense_rank() over (partition by p.p_position order by p.cs desc)         as cs_rank,
-            dense_rank() over (partition by p.p_position order by p.defcons desc)    as defcons_rank,
-            dense_rank() over (partition by p.p_position order by p.dcp90 desc)      as dcp90_rank,
-            dense_rank() over (partition by p.p_position order by p.pp90 desc)       as pp90_rank,
-            dense_rank() over (partition by p.p_position order by p.ppm90_value desc) as ppm90_rank
+            row_number() over (partition by p.p_position order by p.points desc, p.form_value desc, p.p_full_name)     as points_rank,
+            row_number() over (partition by p.p_position order by p.goals desc, p.form_value desc, p.p_full_name)      as goals_rank,
+            row_number() over (partition by p.p_position order by p.assists desc, p.form_value desc, p.p_full_name)    as assists_rank,
+            row_number() over (partition by p.p_position order by p.bonus desc, p.form_value desc, p.p_full_name)      as bonus_rank,
+            row_number() over (partition by p.p_position order by p.savesp90 desc, p.form_value desc, p.p_full_name)   as saves_rank,
+            row_number() over (partition by p.p_position order by p.saved_pens desc, p.form_value desc, p.p_full_name) as saved_pens_rank,
+            row_number() over (partition by p.p_position order by p.cs desc, p.form_value desc, p.p_full_name)         as cs_rank,
+            row_number() over (partition by p.p_position order by p.defcons desc, p.form_value desc, p.p_full_name)    as defcons_rank,
+            row_number() over (partition by p.p_position order by p.dcp90 desc, p.form_value desc, p.p_full_name)      as dcp90_rank,
+            row_number() over (partition by p.p_position order by p.pp90 desc, p.form_value desc, p.p_full_name)       as pp90_rank,
+            row_number() over (partition by p.p_position order by p.ppm90_value desc, p.form_value desc, p.p_full_name) as ppm90_rank,
+            row_number() over (partition by p.p_position order by p.form_value desc, p.points desc, p.p_full_name)      as form_rank
         from player_percentages p
     )
 
@@ -264,31 +291,47 @@ def get_star(selected_player: str) -> pd.DataFrame:
     """The "star" recommendation score (out of 10) for one player, plus
     every scoring ingredient behind it.
 
-    This used to independently recompute the whole scoring pipeline
-    (season form, last-5 form, team form, fixture difficulty) in
-    Python-generated SQL every time the Player page loaded, using a
-    slightly different formula from get_star_top20's Home-page version.
-    Both now just read one row out of analytics.player_rating, a dbt
-    model that is the single canonical implementation of this scoring
-    model (see transformation/models/analytics/player_rating.sql for the
-    full formula, the tunable weights, and the actual-vs-expected-points
-    design). It also fixes a latent bug in the old version of this query:
-    "last 5" / "next 5" gameweeks used to be computed relative to a
-    hardcoded stub date ('2026-01-01') rather than the actual current date.
+    Reads one row out of analytics.player_rating, a dbt model that is the
+    single canonical implementation of this scoring model (see
+    transformation/models/analytics/player_rating.sql for the full
+    formula, the per-position tunable weights, and the reasoning behind
+    each ingredient).
+
+    Round 7 note: the previous version of this query selected five
+    ingredients (quality_score, recent_form_score, team_results_score,
+    team_strength_score, opponent_difficulty_score) from a model that
+    blended season totals against a hard last-5-gameweek window and
+    scored team form from match results. player_rating.sql was rewritten
+    around a different set of four ingredients -- a single recency-
+    weighted quality rate (replacing the season/last-5 split),
+    defensive-contribution rate, team underlying attack/defence strength
+    (replacing match-results-based team form), and a fixture outlook
+    driven by those same underlying team numbers -- so the columns below
+    were updated to match.
+
+    Round 7.1 note: also carries each ingredient's actual *_weight for
+    this player. These aren't purely a lookup by position any more --
+    a midfielder's quality_weight/defcon_weight now depend on their own
+    defensive-contribution involvement too (see
+    MID_DEFCON_ROLE_THRESHOLD in player_rating.sql) -- so the weight has
+    to travel with the row rather than being looked up client-side.
     """
     query = f"""
     select
         player,
         p_position,
-        season_actual_score,
-        season_expected_score,
+        quality_actual_score,
+        quality_expected_score,
         quality_score,
-        last5_actual_score,
-        last5_expected_score,
-        recent_form_score,
-        team_results_score,
+        quality_weight,
+        defensive_contribution_score,
+        defcon_weight,
+        team_attack_score,
+        team_defence_score,
         team_strength_score,
-        opponent_difficulty_score,
+        team_strength_weight,
+        fixture_outlook_score,
+        fixtures_weight,
         minutes_security_score,
         star
     from analytics.player_rating
@@ -302,29 +345,89 @@ def get_star_top5_by_position() -> pd.DataFrame:
     """The top 5 players by "star" rating, separately per position, for
     the Home page's "Top rated players" section.
 
-    Replaces the old flat top-20-across-all-positions list
-    (get_star_top20): comparing goalkeepers against forwards on the same
-    single list wasn't a fair comparison (see the "why does a defender
-    outrate Haaland" discussion in the project's chat history / CHANGELOG)
-    -- position-by-position top 5s are a more honest read of "who's the
-    best pick at each position right now".
+    Position-by-position top 5s (rather than one flat top-20 across every
+    position) are a more honest read of "who's the best pick at each
+    position right now" -- comparing goalkeepers against forwards on the
+    same list isn't a fair comparison.
+
+    Also carries the 4 weighted ingredients behind `star` (plus each
+    ingredient's actual weight for that player, and the minutes-security
+    gate) so the "Top rated players" cards can expand to show how each
+    rating was actually reached, not just the number itself -- see
+    components/rating_breakdown.py.
     """
     query = """
     with ranked as (
         select
+            p_id,
             player,
             p_position,
             star as rating,
+            quality_score,
+            quality_weight,
+            defensive_contribution_score,
+            defcon_weight,
+            team_strength_score,
+            team_strength_weight,
+            fixture_outlook_score,
+            fixtures_weight,
+            minutes_security_score,
             row_number() over (partition by p_position order by star desc) as position_rank
         from analytics.player_rating
     )
     select
+        p_id,
         player,
         p_position,
-        rating
+        rating,
+        quality_score,
+        quality_weight,
+        defensive_contribution_score,
+        defcon_weight,
+        team_strength_score,
+        team_strength_weight,
+        fixture_outlook_score,
+        fixtures_weight,
+        minutes_security_score
     from ranked
     where position_rank <= 5
     order by p_position, position_rank
+    """
+    return run_query(query)
+
+
+@st.cache_data(ttl=600)
+def get_star_by_position(position: int, limit: int = 30) -> pd.DataFrame:
+    """The full "star" leaderboard for ONE position, not capped at 5 --
+    for the Rankings page's bigger list ("so I can see a bigger list of
+    who is good at the moment and who isn't"). get_star_top5_by_position
+    stays exactly as it was for the Home page's compact top-5-per-
+    position section; this is the same idea with the cap raised (or
+    lifted -- pass a large `limit` for "show everyone").
+
+    `position` is 1/2/3/4 (GKP/DEF/MID/FWD), matching analytics.players.
+    p_position and every other position column in this project. Carries
+    the same ingredients/weights as get_star_top5_by_position so each
+    row can expand to the same rating-breakdown panel.
+    """
+    query = f"""
+    select top ({limit})
+        p_id,
+        player,
+        p_position,
+        star as rating,
+        quality_score,
+        quality_weight,
+        defensive_contribution_score,
+        defcon_weight,
+        team_strength_score,
+        team_strength_weight,
+        fixture_outlook_score,
+        fixtures_weight,
+        minutes_security_score
+    from analytics.player_rating
+    where p_position = {position}
+    order by star desc
     """
     return run_query(query)
 
@@ -334,26 +437,41 @@ def get_in_form_differentials(max_ownership: float = 10.0, limit: int = 20) -> p
     """Low-ownership players currently in good recent form -- candidates
     worth a look as differentials, for the Home page.
 
-    "In form" here is recent_form_score specifically (analytics.player_rating's
-    blended actual/expected points-per-90 over the last 5 gameweeks), not
-    the overall star rating -- star also folds in fixture difficulty and
-    team form, which would drown out "is this player playing well right
-    now" with "are their next few fixtures favourable". minutes_security_score
-    is still used as a floor filter (not just a display value) so a
-    one-off cameo goal doesn't show up here as a nailed-on differential.
+    "In form" here is quality_score specifically (analytics.player_rating's
+    recency-weighted blend of actual/expected points per 90 -- see the
+    player_rating.sql rewrite notes on why this replaced the old model's
+    separate last-5-gameweek "recent_form_score" bucket: quality_score IS
+    now the recency-aware "how well is this player playing lately" signal,
+    just computed as a smooth decay rather than a hard 5-gameweek window),
+    not the overall star rating -- star also folds in fixture outlook and
+    team strength, which would drown out "is this player playing well
+    right now" with "are their next few fixtures favourable". minutes_
+    security_score is still used as a floor filter (not just a display
+    value) so a one-off cameo goal doesn't show up here as a nailed-on
+    differential.
+
+    Round 7.1 note: these cards no longer expand to a breakdown (removed
+    per feedback -- the differentials list is meant to be a quick scan,
+    and the breakdown toggle was adding a lot of visual noise across 20
+    cards at once). So this only selects what differential_card.py
+    itself displays plus the two columns the query logic depends on
+    (quality_score to order by, minutes_security_score to filter on) --
+    trimmed from the previous version, which also carried
+    defensive_contribution_score/team_strength_score/fixture_outlook_score/
+    star purely to feed a breakdown panel that no longer exists here.
     """
     query = f"""
     select top ({limit})
+        pr.p_id,
         pr.player,
         pr.p_position,
         pl.p_ownership     as ownership,
         pl.p_price          as price,
-        pr.recent_form_score,
-        pr.star
+        pr.quality_score
     from analytics.player_rating pr
     left join analytics.players pl on pl.p_id = pr.p_id
     where pl.p_ownership <= {max_ownership}
       and pr.minutes_security_score >= 0.5
-    order by pr.recent_form_score desc
+    order by pr.quality_score desc
     """
     return run_query(query)

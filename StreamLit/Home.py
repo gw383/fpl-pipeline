@@ -5,12 +5,15 @@ import base64
 
 import streamlit as st
 
+from colours import DIFFICULTY_COLOURS
 from components.differential_card import differential_card
 from components.news import news_card
+from components.rating_breakdown import rating_breakdown_html
 from components.star_card import star_card
-from components.team_fixtures import team_fixture_card
+from components.team_fixtures import fixture_grid_header_html, team_fixture_card
 from queries.player_stats import get_in_form_differentials, get_star_top5_by_position
 from queries.team_data import get_best_11, get_latest_news, get_team_fixtures
+from theme import TEXT_MUTED, inject_base_css, masthead_html, section_header_html
 
 PITCH_IMAGE_PATH = "images/pitch.jpg"
 
@@ -24,6 +27,7 @@ BEST_11_METRICS = {
 }
 
 st.set_page_config(page_title="FPL Analytics", page_icon="⚽", layout="wide")
+st.markdown(inject_base_css(), unsafe_allow_html=True)
 
 with open(PITCH_IMAGE_PATH, "rb") as image_file:
     pitch_base64 = base64.b64encode(image_file.read()).decode()
@@ -32,14 +36,7 @@ with open(PITCH_IMAGE_PATH, "rb") as image_file:
 # Header
 # ---------------------------------------------------------------------------
 
-st.markdown(
-    """
-    <h1 style='margin-bottom:0;'>FPL Analytics Dashboard</h1>
-    <p style='font-size:20px;color:#888;margin-top:0;'>
-    </p>
-    """,
-    unsafe_allow_html=True,
-)
+st.html(masthead_html("Data-driven picks for the week ahead"))
 
 # ---------------------------------------------------------------------------
 # Load data
@@ -79,13 +76,13 @@ differentials = get_in_form_differentials()
 # Main layout
 # ---------------------------------------------------------------------------
 
-c2, c3, c4 = st.columns([1.75, 1.25, 1], gap="small")
+c2, c3, c4 = st.columns([1.75, 1.25, 1], gap="medium")
 
 # -----------------------------------------------------------------
 # Best XI
 # -----------------------------------------------------------------
 
-with c2:
+with c2, st.container(border=True):
     metric_label = st.selectbox("Build team based on", list(BEST_11_METRICS))
     selected_metric = BEST_11_METRICS[metric_label]
 
@@ -115,19 +112,24 @@ with c2:
                 background:#ffffff;
                 border-radius:6px;
                 padding:5px 4px;
-                box-shadow:0 1px 3px rgba(0,0,0,0.15);
+                box-shadow:0 1px 3px rgba(0,0,0,0.18);
                 font-size:11px;
                 font-weight:700;
                 line-height:13px;
+                color:#0b0b0b;
             ">
                 {row['player']}
             </div>
 
             <div style="
+                display:inline-block;
+                background:rgba(11,11,11,0.55);
+                border-radius:999px;
+                padding:2px 8px;
                 font-size:10px;
-                font-weight:600;
+                font-weight:700;
                 color:white;
-                margin-top:3px;
+                margin-top:4px;
             ">
                 {row['metric_value']:.2f}
             </div>
@@ -135,6 +137,13 @@ with c2:
         </div>
         """
 
+    # Four equal grid rows (one per position band) rather than the
+    # previous flex column + manual transform:translateY nudges per
+    # row -- those nudges were tuned for one particular formation and
+    # could push adjacent rows into each other for others (a back-5
+    # formation, or GKP nudged down 20px with not much headroom in a
+    # fixed 540px pitch). A grid divides the height exactly four ways
+    # with no per-row offset to get wrong, whatever the formation.
     st.html(
         f"""
         <div style="
@@ -145,57 +154,32 @@ with c2:
             padding:20px 8px;
             box-sizing:border-box;
 
-            background-image:url('data:image/jpeg;base64,{pitch_base64}');
+            background-image:linear-gradient(rgba(0,0,0,0.05), rgba(0,0,0,0.05)), url('data:image/jpeg;base64,{pitch_base64}');
             background-size:100% 100%;
             background-position:center;
             background-repeat:no-repeat;
 
-            display:flex;
-            flex-direction:column;
-            justify-content:space-between;
+            display:grid;
+            grid-template-rows:repeat(4, 1fr);
         ">
 
             <!-- Goalkeeper -->
-            <div style="
-                display:flex;
-                justify-content:center;
-                align-items:center;
-                width:100%;
-                transform:translateY(20px);
-            ">
+            <div style="display:flex;justify-content:space-evenly;align-items:center;min-width:0;">
                 {''.join(player_card(row) for _, row in goalkeeper.iterrows())}
             </div>
 
             <!-- Defenders -->
-            <div style="
-                display:flex;
-                justify-content:space-around;
-                align-items:center;
-                width:100%;
-                transform:translateY(-5px);
-            ">
+            <div style="display:flex;justify-content:space-evenly;align-items:center;min-width:0;">
                 {''.join(player_card(row) for _, row in defenders.iterrows())}
             </div>
 
             <!-- Midfielders -->
-            <div style="
-                display:flex;
-                justify-content:space-around;
-                align-items:center;
-                width:100%;
-                transform:translateY(-5px);
-            ">
+            <div style="display:flex;justify-content:space-evenly;align-items:center;min-width:0;">
                 {''.join(player_card(row) for _, row in midfielders.iterrows())}
             </div>
 
             <!-- Forwards -->
-            <div style="
-                display:flex;
-                justify-content:space-around;
-                align-items:center;
-                width:100%;
-                transform:translateY(-5px);
-            ">
+            <div style="display:flex;justify-content:space-evenly;align-items:center;min-width:0;">
                 {''.join(player_card(row) for _, row in forwards.iterrows())}
             </div>
 
@@ -207,43 +191,42 @@ with c2:
 # Fixtures
 # -----------------------------------------------------------------
 
-with c3:
+with c3, st.container(border=True):
     st.subheader("Fixture Difficulty")
+    st.caption("Teams ordered by their average difficulty over the next 5 gameweeks -- easiest run first.")
 
-    gw_headers = "".join(
+    # A heatmap needs a key: a small "easy -> hard" legend for the same
+    # 5-step colour scale every cell below is drawn from.
+    legend_swatches = "".join(
         f"""
-        <div style="
-            width:65px;
-            text-align:center;
-            font-size:11px;
-        ">
-            GW {gw}
+        <div style="display:flex;align-items:center;gap:4px;">
+            <span style="
+                width:10px;height:10px;border-radius:3px;
+                background:{colour};display:inline-block;
+            "></span>
         </div>
         """
-        for gw in next_5_gws
+        for colour in DIFFICULTY_COLOURS.values()
     )
-
     st.html(
         f"""
         <div style="
             display:flex;
             align-items:center;
-            font-weight:700;
-            font-size:12px;
-            margin-bottom:4px;
+            gap:6px;
+            font-size:11px;
+            color:{TEXT_MUTED};
+            font-weight:600;
+            margin-bottom:10px;
         ">
-
-            <div style="width:65px;">
-                Team
-            </div>
-
-            <div style="display:flex;">
-                {gw_headers}
-            </div>
-
+            Easy
+            <div style="display:flex;gap:3px;">{legend_swatches}</div>
+            Hard
         </div>
         """
     )
+
+    st.html(fixture_grid_header_html(next_5_gws))
 
     for team in team_order:
         team_df = fixtures[fixtures["team_name"] == team]
@@ -258,7 +241,7 @@ with c3:
 # News
 # -----------------------------------------------------------------
 
-with c4:
+with c4, st.container(border=True):
     st.subheader("Latest News")
 
     if news.empty:
@@ -272,12 +255,14 @@ with c4:
 # -----------------------------------------------------------------
 
 st.markdown("---")
-st.subheader("Top rated players")
-st.caption(
-    "The best-looking players going forward on the star rating alone, top "
-    "5 per position -- price isn't a factor in this rating at all, and "
-    "positions are ranked separately rather than mixed into one list (a "
-    "goalkeeper and a forward aren't a fair comparison on the same list)."
+st.html(
+    section_header_html(
+        "Top rated players",
+        "The best-looking players going forward on the star rating alone, top 5 per "
+        "position -- price isn't a factor in this rating at all, and positions are "
+        "ranked separately rather than mixed into one list (a goalkeeper and a "
+        "forward aren't a fair comparison on the same list).",
+    )
 )
 
 if recommendations.empty:
@@ -293,52 +278,56 @@ else:
 
     for col, (position_id, label) in zip(pos_cols, position_sections):
         with col:
-            st.markdown(f"**{label}**")
+            st.html(
+                f'<div style="font-size:12px;font-weight:700;letter-spacing:0.04em;'
+                f'text-transform:uppercase;color:{TEXT_MUTED};margin-bottom:8px;">{label}</div>'
+            )
             position_players = recommendations[recommendations["p_position"] == position_id]
 
             if position_players.empty:
                 st.caption("No ratings available.")
             else:
-                cards_html = "".join(
-                    star_card(row) for _, row in position_players.iterrows()
-                )
-                st.html(
-                    f"""
-                    <div style="
-                        display:flex;
-                        flex-direction:column;
-                        gap:6px;
-                    ">
-                        {cards_html}
-                    </div>
-                    """
-                )
+                # Each card is rendered individually (rather than one
+                # big joined HTML block, as before) so it can have its
+                # own "Show breakdown" toggle right underneath it.
+                for _, row in position_players.iterrows():
+                    st.html(star_card(row))
+                    state_key = f"star_expanded_{int(row['p_id'])}"
+                    expanded = st.session_state.get(state_key, False)
+                    if st.button(
+                        "Hide breakdown ▴" if expanded else "Show breakdown ▾",
+                        key=f"btn_{state_key}",
+                        use_container_width=True,
+                    ):
+                        st.session_state[state_key] = not expanded
+                        expanded = not expanded
+                    if expanded:
+                        st.html(rating_breakdown_html(row, star=float(row["rating"])))
 
 # -----------------------------------------------------------------
 # In-form differentials
 # -----------------------------------------------------------------
 
 st.markdown("---")
-st.subheader("In-form differentials")
-st.caption(
-    "Low-ownership players (10% or less) currently in good recent form -- "
-    "worth a look if you're after a punt rather than a template pick."
+st.html(
+    section_header_html(
+        "In-form differentials",
+        "Low-ownership players (10% or less) currently in good recent form -- "
+        "worth a look if you're after a punt rather than a template pick.",
+    )
 )
 
 if differentials.empty:
     st.caption("No differentials meet the criteria right now.")
 else:
-    cards_html = "".join(
-        differential_card(row) for _, row in differentials.iterrows()
-    )
-    st.html(
-        f"""
-        <div style="
-            display:flex;
-            flex-wrap:wrap;
-            gap:10px;
-        ">
-            {cards_html}
-        </div>
-        """
-    )
+    # Round 7.1: the per-card "Show breakdown" toggle was removed here
+    # (feedback: with up to 20 cards on screen at once, a breakdown panel
+    # per card was a lot of visual noise for a section that's meant to
+    # be a quick scan -- the "Top rated players" section above, with far
+    # fewer cards, keeps its breakdown). A plain 4-across grid, no longer
+    # needing extra room under each card for a toggle button/panel.
+    diff_cols = st.columns(4, gap="small")
+    for i, (_, row) in enumerate(differentials.iterrows()):
+        with diff_cols[i % 4]:
+            st.html(differential_card(row))
+            st.html('<div style="height:10px;"></div>')

@@ -74,3 +74,5 @@ Thumbs.db
 
 #misc
 Claude_outputs/
+# Local-only scratch (diagnostics, old copies) -- never committed
+_local/

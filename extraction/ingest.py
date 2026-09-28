@@ -16,7 +16,9 @@ from manager_transfers import manager_transfers
 
 # FPL manager entry IDs to track. Add more IDs here to follow
 # additional managers/mini-leagues.
-TRACKED_ENTRY_IDS = [146897]
+# 194625 is the user's own FPL manager ID, added to back the "My Team"
+# page (StreamLit/pages/MyTeam.py) -- see CHANGELOG.md.
+TRACKED_ENTRY_IDS = [146897, 194625]
 
 # A Premier League season runs 38 gameweeks.
 ALL_GAMEWEEKS = list(range(1, 39))

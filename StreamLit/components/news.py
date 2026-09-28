@@ -1,9 +1,10 @@
 """A single latest-news item, colour-coded by news type."""
+from theme import BLUE, BORDER, RADIUS_SM, SHADOW_CARD, STATUS_CRITICAL, STATUS_GOOD, STATUS_WARNING, SURFACE, TEXT_MUTED, TEXT_PRIMARY
 
-INJURY_COLOR = "#d9534f"
-SUSPENDED_COLOR = "#f0ad4e"
-AVAILABLE_COLOR = "#5cb85c"
-DEFAULT_COLOR = "#428bca"
+INJURY_COLOR = STATUS_CRITICAL
+SUSPENDED_COLOR = STATUS_WARNING
+AVAILABLE_COLOR = STATUS_GOOD
+DEFAULT_COLOR = BLUE
 
 
 def _news_colour(text: str) -> str:
@@ -23,23 +24,24 @@ def news_card(row) -> str:
 
     return f"""
     <div style="
-        background:white;
-        border-left:5px solid {colour};
-        border-radius:8px;
-        padding:8px 10px;
-        margin-bottom:5px;
-        box-shadow:0 1px 3px rgba(0,0,0,0.08);
+        background:{SURFACE};
+        border:1px solid {BORDER};
+        border-left:4px solid {colour};
+        border-radius:{RADIUS_SM};
+        padding:9px 11px;
+        margin-bottom:6px;
+        box-shadow:{SHADOW_CARD};
     ">
 
-        <div style="font-weight:700;">
+        <div style="font-weight:700;font-size:13px;color:{TEXT_PRIMARY};">
             {row['player']}
         </div>
 
-        <div style="font-size:12px;">
+        <div style="font-size:12px;color:{TEXT_PRIMARY};margin-top:2px;">
             {row['news']}
         </div>
 
-        <div style="font-size:10px;color:#777;">
+        <div style="font-size:10px;color:{TEXT_MUTED};margin-top:4px;font-weight:600;">
             {row['date']}
         </div>
 

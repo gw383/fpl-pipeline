@@ -13,6 +13,7 @@ sources:
       - name: raw_manager_picks
       - name: raw_manager_profiles
       - name: raw_manager_transfers
+      - name: raw_manager_gameweek_history
       - name: raw_positions
   - name: stg
     schema: stg

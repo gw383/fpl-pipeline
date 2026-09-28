@@ -2,8 +2,7 @@
 import plotly.graph_objects as go
 from plotly.graph_objects import Figure
 
-CHART_BACKGROUND = "#f2f2f2"
-GRID_COLOR = "#d9d9d9"
+from theme import CHART_SURFACE, GRIDLINE, apply_chart_theme
 
 GOALKEEPER_CATEGORIES = ["Saves", "Penalty Saves", "Bonus", "Clean Sheets", "Points"]
 OUTFIELD_CATEGORIES = ["Goals", "Assists", "Bonus", "Def Con /90", "Clean Sheets"]
@@ -70,24 +69,21 @@ def player_radar(
         )
     )
 
+    apply_chart_theme(fig, height=420)
     fig.update_layout(
         title="Player Profile",
-        paper_bgcolor=CHART_BACKGROUND,
-        plot_bgcolor=CHART_BACKGROUND,
         polar=dict(
-            bgcolor=CHART_BACKGROUND,
+            bgcolor=CHART_SURFACE,
             gridshape="linear",
             radialaxis=dict(
                 visible=True,
                 range=[0, 100],
                 showticklabels=False,
-                gridcolor=GRID_COLOR,
+                gridcolor=GRIDLINE,
             ),
-            angularaxis=dict(gridcolor=GRID_COLOR),
+            angularaxis=dict(gridcolor=GRIDLINE),
         ),
         showlegend=False,
-        height=400,
-        margin=dict(l=40, r=40, t=60, b=40),
     )
 
     return fig

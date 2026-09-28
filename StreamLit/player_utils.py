@@ -7,14 +7,19 @@ that are already in hand.
 """
 import pandas as pd
 
+from theme import ORANGE, STATUS_CRITICAL, STATUS_SERIOUS, STATUS_WARNING
+
 # News banners are colour-coded by the "X% chance of playing" phrase
 # FPL uses in its news text. Checked in this order (first match wins).
+# Colours now come from the app's shared status palette (theme.py)
+# rather than one-off hex values, but the matching order/behaviour is
+# unchanged from before.
 NEWS_BANNER_STYLES = [
-    ("25%", "#fff3b0", "#222"),
-    ("50%", "#ffd08a", "#222"),
-    ("75%", "#e8903a", "#222"),
+    ("25%", STATUS_WARNING, "#222"),
+    ("50%", STATUS_SERIOUS, "#222"),
+    ("75%", ORANGE, "#fff"),
 ]
-DEFAULT_NEWS_BANNER = ("#d9534f", "#fff")
+DEFAULT_NEWS_BANNER = (STATUS_CRITICAL, "#fff")
 
 
 def per_90(value: float, minutes: int, decimals: int = 1) -> float:
@@ -40,6 +45,16 @@ def recommendation_stars(star: float) -> str:
 def news_banner_html(news) -> str:
     """Render the player-header news banner, colour-coded by the
     playing-chance percentage mentioned in the news text (if any).
+
+    This used to be its own absolutely-positioned box floating in the
+    middle of the header (left:48%), independent of the player-name
+    block next to it (which has no width limit of its own, so a longer
+    name/star-rating combination could run straight into it -- visible
+    as the two overlapping). It's now a plain, normal-flow pill meant
+    to be placed as an extra line *inside* the same name/team/price
+    block (see pages/Player.py), so it can never collide with
+    anything -- it just takes its place in that block's own stack,
+    however wide or narrow the text next to it happens to be.
     """
     if pd.isna(news) or not news:
         return ""
@@ -53,21 +68,16 @@ def news_banner_html(news) -> str:
 
     return f"""
     <div style="
-        position:absolute;
-        left:48%;
-        right:21%;
-        top:50%;
-        transform:translateY(-50%);
+        display:inline-block;
+        margin-top:8px;
         color:{color};
-        font-size:17px;
+        font-size:14px;
         font-weight:600;
-        line-height:1.35;
-        z-index:2;
+        line-height:1.3;
         background:{background};
-        padding:10px 16px;
-        border-radius:12px;
-        width:max-content;
-        max-width:45%;
+        padding:6px 14px;
+        border-radius:999px;
+        max-width:100%;
     ">
         ⚠️ {news}
     </div>
