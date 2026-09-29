@@ -3,12 +3,12 @@
 from datetime import UTC, datetime
 
 import pytest
-from player_history import parse_history_past
 
 from bootstrap_static import started_gameweeks
 from config import parse_id_list
 from managers import parse_picks
 from pl_events import parse_match_goals, pl_season_id, previous_seasons
+from player_history import parse_history_past
 
 NOW = datetime(2026, 9, 28, 12, tzinfo=UTC)
 

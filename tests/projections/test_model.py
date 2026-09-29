@@ -1,5 +1,6 @@
 """Tests for projections/model.py on a small synthetic league."""
 
+from dataclasses import replace
 from datetime import date
 
 import numpy as np
@@ -336,3 +337,22 @@ def test_price_helpers():
     attack, defence = team_price_priors(players, [1, 2, 3], ModelConfig())
     assert attack[3] == 1.0 and defence[3] == 1.0  # no players, no information
     assert team_price_priors(players, [1, 2], ModelConfig(team_price_prior_power=0)) is None
+
+
+def test_assume_fit_ignores_flag_and_recent_absence():
+    inputs = league()
+    players = inputs.players.copy()
+    players.loc[players["p_id"] == 4, ["p_status", "p_chance_of_playing", "p_news"]] = ["i", 0.0, "Knee injury"]
+    stats = inputs.stats.copy()
+    stats.loc[(stats["pg_id"] == 4) & (stats["pg_gameweek"] == 4), ["pg_minutes", "pg_starts"]] = 0
+    horizon = pd.DataFrame({"gw": [5], "gw_index": [0], "deadline": pd.to_datetime(["2026-10-03"], utc=True)})
+
+    fit = ModelConfig(fit_players=frozenset({4}))
+    assert availability(players, horizon, fit).set_index("p_id").loc[4, "availability"] == 1.0
+    assert availability(players, horizon, ModelConfig()).set_index("p_id").loc[4, "availability"] == 0.0
+
+    injured = replace(inputs, players=players, stats=stats)
+    normal = minutes_model(injured, 5, ModelConfig()).set_index("p_id").loc[4, "p_start"]
+    assumed = minutes_model(injured, 5, fit).set_index("p_id").loc[4, "p_start"]
+    assert assumed == pytest.approx(ModelConfig().start_prob_cap)
+    assert assumed > normal

@@ -6,7 +6,7 @@ import re
 import pandas as pd
 import pytest
 
-from components.pitch import _display_name, _format_metric, shirt_svg
+from components.pitch import _display_name, _format_metric, gameweek_points_html, shirt_svg, team_expected_points
 
 
 def _svg(img: str) -> str:
@@ -46,3 +46,38 @@ def test_display_name_prefers_web_name():
 @pytest.mark.parametrize(("value", "expected"), [(34.0, "34"), (2.345, "2.35"), (0, "0")])
 def test_metric_values_drop_needless_decimals(value, expected):
     assert _format_metric(value) == expected
+
+
+def _gw_row(**values):
+    base = {"gw_fixtures": 1, "gw_kicked_off": 0, "gw_points": None, "gw_xpts": 4.26}
+    return pd.Series({**base, **values})
+
+
+def test_before_kick_off_only_expected_points():
+    html = gameweek_points_html(_gw_row())
+    assert "4.3 xP" in html and "pts" not in html
+
+
+def test_after_kick_off_actual_and_expected():
+    html = gameweek_points_html(_gw_row(gw_kicked_off=1, gw_points=8))
+    assert "8 pts" in html and "4.3 xP" in html
+
+
+def test_captain_doubles_both():
+    html = gameweek_points_html(_gw_row(gw_kicked_off=1, gw_points=8), multiplier=2)
+    assert "16 pts" in html and "8.5 xP" in html
+
+
+def test_blank_and_missing_expected():
+    assert "Blank" in gameweek_points_html(_gw_row(gw_fixtures=0))
+    assert gameweek_points_html(_gw_row(gw_xpts=float("nan"))) == ""
+    assert "0 pts" in gameweek_points_html(_gw_row(gw_kicked_off=1, gw_points=float("nan"), gw_xpts=None))
+
+
+def test_team_expected_points_counts_like_fpl():
+    squad = pd.DataFrame({"gw_xpts": [5.0, 3.0, 2.0, 4.0], "multiplier": [2, 1, 1, 0]})  # captain, two, a sub
+    assert team_expected_points(squad) == pytest.approx(15.0)
+    squad["multiplier"] = [3, 1, 1, 1]  # triple captain + bench boost
+    assert team_expected_points(squad) == pytest.approx(24.0)
+    assert team_expected_points(squad.assign(gw_xpts=float("nan"))) is None
+    assert team_expected_points(squad.drop(columns="gw_xpts")) is None

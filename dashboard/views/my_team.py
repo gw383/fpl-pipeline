@@ -11,9 +11,10 @@ import streamlit as st
 
 from components.card import card
 from components.metric_card import metric_row
-from components.pitch import pitch_html, shirt_svg, squad_card
+from components.pitch import gameweek_points_html, pitch_html, shirt_svg, squad_card, team_expected_points
 from manager_loader import ManagerNotFound, load_manager, parse_manager_id
 from queries.manager_data import (
+    get_gameweek_expected,
     get_known_managers,
     get_manager_gameweek_history,
     get_manager_profile,
@@ -131,6 +132,8 @@ squad = get_manager_squad(entry_id)
 history = get_manager_gameweek_history(entry_id)
 latest = history.iloc[0] if not history.empty else pd.Series(dtype=object)
 current_gw = int(squad["gw_id"].iloc[0]) if not squad.empty else None
+if current_gw is not None:
+    squad = squad.astype({"p_id": "int64"}).merge(get_gameweek_expected(current_gw), on="p_id", how="left")
 
 active_chip = latest.get("active_chip") if not latest.empty and pd.notna(latest.get("active_chip")) else None
 chip_note = f" · {active_chip} chip active" if active_chip else ""
@@ -167,11 +170,13 @@ overall_rank = _int_or(profile_row["m_overall_rank"])
 gw_points = _int_or(latest.get("gw_points"))
 transfers_made = _int_or(latest.get("transfers_made"), 0)
 transfers_cost = _int_or(latest.get("transfers_cost"), 0)
+expected_total = team_expected_points(squad)
 metric_row(
     [
         ("Overall rank", f"{overall_rank:,}" if overall_rank else "-"),
         ("Overall points", _int_or(profile_row["m_overall_points"], 0)),
         (f"GW{current_gw} points", gw_points if gw_points is not None else "-"),
+        (f"GW{current_gw} expected", f"{expected_total:.1f}" if expected_total is not None else "-"),
         ("Team value", f"£{_int_or(profile_row['m_squad_value'], 0) / 10:.1f}m"),
         ("In the bank", f"£{_int_or(profile_row['m_bank'], 0) / 10:.1f}m"),
         (f"GW{current_gw} transfers", f"{transfers_made}" + (f" (-{transfers_cost})" if transfers_cost else "")),
@@ -187,7 +192,11 @@ squad_col, transfers_col = st.columns([1.7, 1], gap="large")
 
 with squad_col, card("my_team-1"):
     st.html(
-        card_title_html("Starting XI", "Captain marked C, vice-captain VC; pills show expected points next gameweek.")
+        card_title_html(
+            f"GW{current_gw} team",
+            "Captain marked C, vice-captain VC. Once a player's team has kicked off: his points (white) next to the "
+            "points the model expected before the gameweek (dark); before that, just the expected points.",
+        )
     )
     st.html(pitch_html(squad[squad["is_starting"] == 1], squad_card, height=520))
 
@@ -206,6 +215,7 @@ with squad_col, card("my_team-1"):
                 {row["web_name"] if pd.notna(row["web_name"]) else row["player"]}
             </div>
             <div style="font-size:11px;color:{TEXT_MUTED};">{row["team_short_name"]}</div>
+            {gameweek_points_html(row)}
         </div>
         """
         for _, row in bench.iterrows()

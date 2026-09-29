@@ -124,6 +124,7 @@ def _value_pill(text: str) -> str:
         font-weight:700;
         color:white;
         margin-top:4px;
+        white-space:nowrap;
     ">
         {text}
     </div>
@@ -146,13 +147,62 @@ def best_xi_card(row: pd.Series) -> str:
     """
 
 
+def _number(value) -> float | None:
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if value != value else value
+
+
+def team_expected_points(squad: pd.DataFrame) -> float | None:
+    """The team's expected points for the gameweek, counted the way FPL
+    counts actual points: each pick's expected points times his multiplier
+    (captain x2, triple captain x3, bench x0 unless Bench Boost). None when
+    there are no expected points to count."""
+    if "gw_xpts" not in squad or squad["gw_xpts"].notna().sum() == 0:
+        return None
+    return float((squad["gw_xpts"].fillna(0.0) * squad["multiplier"].fillna(0)).sum())
+
+
+def gameweek_points_html(row: pd.Series, multiplier: int = 1) -> str:
+    """Points pills for a squad player's gameweek: actual points (times the
+    captaincy multiplier) next to what the model expected once his team has
+    kicked off; before that, just the expected points. "Blank" when his team
+    has no fixture."""
+    fixtures = _number(row.get("gw_fixtures"))
+    kicked_off = _number(row.get("gw_kicked_off")) or 0
+    expected = _number(row.get("gw_xpts"))
+    actual = _number(row.get("gw_points"))
+    if fixtures == 0:
+        return _value_pill("Blank")
+    expected_html = _value_pill(f"{expected * multiplier:.1f} xP") if expected is not None else ""
+    if kicked_off > 0:
+        points = int((actual or 0) * multiplier)
+        actual_html = f"""
+        <div style="display:inline-block;background:#ffffff;color:{TEXT_PRIMARY};border-radius:999px;padding:2px 6px;
+                    font-size:10.5px;font-weight:800;margin-top:4px;box-shadow:0 1px 2px rgba(0,0,0,0.25);
+                    white-space:nowrap;">
+            {points} pts
+        </div>
+        """
+        return (
+            '<div style="display:flex;justify-content:center;gap:3px;flex-wrap:nowrap;">'
+            f"{actual_html}{expected_html}</div>"
+        )
+    return expected_html
+
+
 def squad_card(row: pd.Series) -> str:
-    """Squad player with team, expected points next gameweek and a
-    captain/vice-captain badge."""
+    """Squad player with team, his points and expected points in the
+    gameweek shown (see gameweek_points_html) and a captain/vice-captain
+    badge. Without gameweek data it falls back to expected points next
+    gameweek."""
     badge = "C" if row["is_captain"] else "VC" if row["is_vice_captain"] else ""
     badge_html = ""
+    multiplier = int(row["multiplier"]) if pd.notna(row.get("multiplier")) and row["multiplier"] > 1 else 1
     if badge:
-        multiplier = f" &times;{int(row['multiplier'])}" if row["multiplier"] and row["multiplier"] > 1 else ""
+        multiplier_text = f" &times;{multiplier}" if multiplier > 1 else ""
         badge_html = f"""
         <div style="
             position:absolute;
@@ -167,17 +217,20 @@ def squad_card(row: pd.Series) -> str:
             padding:2px 6px;
             box-shadow:0 1px 3px rgba(0,0,0,0.3);
         ">
-            {badge}{multiplier}
+            {badge}{multiplier_text}
         </div>
         """
 
-    xpts = row.get("xpts_next_gw")
-    xpts_html = _value_pill(f"{float(xpts):.1f} xP") if pd.notna(xpts) else ""
+    if "gw_fixtures" in row.index:
+        points_html = gameweek_points_html(row, multiplier)
+    else:
+        xpts = row.get("xpts_next_gw")
+        points_html = _value_pill(f"{float(xpts):.1f} xP") if pd.notna(xpts) else ""
     return f"""
-    <div style="text-align:center;width:84px;position:relative;">
+    <div style="text-align:center;width:104px;position:relative;">
         {badge_html}
         {_row_shirt(row)}
         {_name_plate(_display_name(row), row["team_short_name"])}
-        {xpts_html}
+        {points_html}
     </div>
     """

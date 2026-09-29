@@ -29,7 +29,8 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = [
     "bootstrap_static", "check_connection", "common", "config", "db", "event_live", "fixtures", "ingest", "managers",
-    "pl_events",
-    "backtest", "inputs", "league", "model", "run",
-    "best_xi", "charts", "manager_loader", "components", "database", "formatting", "queries", "settings", "theme",
+    "pl_events", "player_history",
+    "backtest", "inputs", "league", "model", "plan", "run",
+    "best_xi", "charts", "manager_loader", "components", "database", "formatting", "queries", "settings",
+    "theme",
 ]

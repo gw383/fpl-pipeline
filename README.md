@@ -56,7 +56,7 @@ flowchart LR
 
 See [docs/data_model.md](docs/data_model.md) for the lineage and schema diagrams.
 
-**3. Projection model** ([`projections/`](projections)) predicts every player's FPL points for each fixture in the next five gameweeks and writes `player_rating`, `player_projection` and `team_rating` back to the warehouse. The model is pure pandas/NumPy with unit tests, and the same code powers a point-in-time **backtest** (`python projections/backtest.py`). See the [methodology](docs/rating_methodology.md).
+**3. Projection model** ([`projections/`](projections)) predicts every player's FPL points for each fixture in the next five gameweeks and writes `player_rating`, `player_projection` and `team_rating` back to the warehouse, plus `player_gameweek_expected` (what it expected from each player in every gameweek already under way, for expected-vs-actual on the team sheet). The model is pure pandas/NumPy with unit tests, and the same code powers a point-in-time **backtest** (`python projections/backtest.py`). See the [methodology](docs/rating_methodology.md).
 
 **4. Orchestration** ([`airflow/`](airflow)) runs the daily DAG `ingest → dbt deps → dbt build → project` in Docker; `dbt build` interleaves tests with models so bad data stops downstream builds. The containers reach the host's SQL Server via `host.docker.internal`.
 
@@ -128,6 +128,20 @@ python projections/run.py     # expected points -> analytics.player_rating
 cd dashboard
 streamlit run app.py
 ```
+
+### 5. Plan transfers (optional)
+
+[`projections/plan.py`](projections/plan.py) uses the same projections to pick a squad. It prints the plan and writes nothing to the warehouse:
+
+```bash
+# Wildcard / new team: best 15 over the next 8 gameweeks, on your own budget
+python projections/plan.py wildcard --manager <your FPL ID> --horizon 8
+
+# Week to week: best use of your free transfer(s) over the next 4 gameweeks
+python projections/plan.py transfers --manager <your FPL ID> --free-transfers 1
+```
+
+Later gameweeks are discounted (`--discount`, default 0.9 for a wildcard, 0.85 for transfers). `--assume-fit` treats flagged players as fit, `--exclude` rules players out, and `--csv` saves the squad. The squad is chosen with an integer programme (SciPy): 2/5/5/3, at most three per club, within budget, and the best eleven and captain every week.
 
 ### Orchestrating with Airflow (optional)
 

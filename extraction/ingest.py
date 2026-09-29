@@ -12,8 +12,6 @@ from __future__ import annotations
 import argparse
 import logging
 
-from player_history import ensure_history_tables, ingest_player_history
-
 from bootstrap_static import ingest_bootstrap_static, started_gameweeks
 from common import ensure_raw_schema
 from config import CURRENT_SEASON, TRACKED_ENTRY_IDS
@@ -22,6 +20,7 @@ from event_live import ingest_event_live
 from fixtures import ingest_fixtures
 from managers import ensure_manager_tables, ingest_managers, known_manager_ids
 from pl_events import ensure_goal_events_table, ingest_past_goal_events, ingest_pl_goal_events
+from player_history import ensure_history_tables, ingest_player_history
 
 logger = logging.getLogger("ingest")
 
