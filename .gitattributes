@@ -1,0 +1,5 @@
+# Normalise line endings in the repository; binary assets untouched.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.exe binary

@@ -1,76 +1,49 @@
-
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-
 venv/
 .venv/
-env/
-ENV/
-
 .pytest_cache/
-.mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
 
-# Environment / Secrets
+# Secrets / local config
 .env
 .env.*
 !.env.example
 
 # dbt
-target/
-dbt_packages/
+transformation/target/
+transformation/dbt_packages/
+transformation/logs/
 logs/
+.user.yml
 
-# Airflow
+# Airflow runtime files
 airflow/logs/
-airflow/airflow.db
-airflow/*.db
-
-# Airflow generated/local files
 airflow/config/
 airflow/plugins/
+airflow/*.db
 
-# Build / Executables
-# NOTE: *.spec is intentionally tracked now, not ignored -- FPL Dashboard.spec
-# and run_pipeline.spec are the source-of-truth recipes PyInstaller needs to
-# rebuild the .exe launchers, so they should live in version control like any
-# other source file. Only the generated build output stays ignored:
-dist/
+# PyInstaller output
 build/
+dist/
 
-# Local databases
+# Local data / databases
 *.mdf
-*.ndf
 *.ldf
 *.bak
 *.db
-*.sqlite
-*.sqlite3
-
-# Data files
+*.sqlite*
 data/
-raw_data/
-*.parquet
 
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-*.temp
-~$*
-
-# Editor / OS junk
+# Editors / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+~$*
 
-
-#misc
-Claude_outputs/
+# Local-only scratch (diagnostics, old copies) -- never committed
+_local/

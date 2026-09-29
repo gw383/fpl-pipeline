@@ -1,0 +1,24 @@
+short_name,team_name,primary_colour,secondary_colour,badge_file
+ARS,Arsenal,#EF0107,#FFFFFF,arsenal.png
+AVL,Aston Villa,#95BFE5,#670E36,villa.png
+BOU,Bournemouth,#DA291C,#000000,bournemouth.png
+BRE,Brentford,#E30613,#FFFFFF,brentford.png
+BHA,Brighton,#0057B8,#FFFFFF,brighton.png
+BUR,Burnley,#6C1D45,#99D6EA,burnley.png
+CHE,Chelsea,#034694,#FFFFFF,chelsea.png
+COV,Coventry City,#59CBE8,#FFFFFF,coventry.png
+CRY,Crystal Palace,#1B458F,#C4122E,palace.png
+EVE,Everton,#003399,#FFFFFF,everton.png
+FUL,Fulham,#FFFFFF,#000000,fulham.png
+HUL,Hull City,#F5A12D,#000000,hull.png
+IPS,Ipswich Town,#0044A9,#FFFFFF,ipswich.png
+LEE,Leeds,#FFCD00,#1D428A,leeds.png
+LIV,Liverpool,#C8102E,#00B2A9,liverpool.png
+MCI,Man City,#6CABDD,#1C2C5B,man_city.png
+MUN,Man Utd,#DA291C,#FBE122,man_utd.png
+NEW,Newcastle,#241F20,#FFFFFF,newcastle.png
+NFO,Nott'm Forest,#DD0000,#FFFFFF,forest.png
+SUN,Sunderland,#EB172B,#FFFFFF,sunderland.png
+TOT,Spurs,#132257,#FFFFFF,spuds.png
+WHU,West Ham,#7A263A,#1BB1E7,west_ham.png
+WOL,Wolves,#FDB913,#231F20,wolves.png

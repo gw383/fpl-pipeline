@@ -1,9 +1,5 @@
-"""Database connectivity for the extraction pipeline.
+"""SQL Server connectivity for the extraction pipeline."""
 
-A single engine factory is used everywhere the pipeline needs to talk
-to SQL Server, so connection details live in exactly one place instead
-of being duplicated (and drifting) across scripts.
-"""
 from __future__ import annotations
 
 import os
@@ -16,34 +12,32 @@ from sqlalchemy.engine import Engine
 load_dotenv()
 
 ODBC_DRIVER = "ODBC Driver 18 for SQL Server"
-DATABASE_NAME = "FPL"
 
 
 def build_connection_string() -> str:
-    """Assemble the ODBC connection string from environment variables.
+    """Assemble an ODBC connection string from environment variables.
 
-    Reads FPL_DB_SERVER (defaults to "localhost"), FPL_DB_USER and
-    FPL_DB_PASSWORD -- typically supplied via a local .env file (see
-    .env.example) or, when running in Airflow, the container's
-    environment.
+    ``FPL_DB_SERVER`` (default ``localhost``) and ``FPL_DB_NAME`` (default
+    ``FPL``) locate the database. If ``FPL_DB_USER`` is set, SQL Server
+    authentication is used with ``FPL_DB_PASSWORD``; otherwise the connection
+    falls back to Windows integrated authentication.
     """
     server = os.getenv("FPL_DB_SERVER", "localhost")
+    database = os.getenv("FPL_DB_NAME", "FPL")
     user = os.getenv("FPL_DB_USER")
-    password = os.getenv("FPL_DB_PASSWORD")
 
-    return (
-        "DRIVER={ODBC Driver 18 for SQL Server};"
-        f"SERVER={server};"
-        f"DATABASE={DATABASE_NAME};"
-        f"UID={user};"
-        f"PWD={password};"
-        "TrustServerCertificate=yes;"
-    )
+    auth = f"UID={user};PWD={os.getenv('FPL_DB_PASSWORD', '')};" if user else "Trusted_Connection=yes;"
+
+    return f"DRIVER={{{ODBC_DRIVER}}};SERVER={server};DATABASE={database};{auth}TrustServerCertificate=yes;"
 
 
 def get_engine() -> Engine:
-    """Create a SQLAlchemy engine for the FPL SQL Server database."""
-    connection_string = build_connection_string()
+    """Create a SQLAlchemy engine for the FPL database.
+
+    ``fast_executemany`` makes pyodbc send each ``DataFrame.to_sql`` batch
+    as a single round trip instead of one INSERT per row.
+    """
     return create_engine(
-        f"mssql+pyodbc:///?odbc_connect={quote_plus(connection_string)}"
+        f"mssql+pyodbc:///?odbc_connect={quote_plus(build_connection_string())}",
+        fast_executemany=True,
     )

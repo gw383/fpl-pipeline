@@ -1,26 +1,25 @@
-{{ config(materialized='table') }}
-
--- Dimension table: one row per player, prefixed p_.
---
--- p_ownership (selected_by_percent from the FPL API) was added to support
--- a "differential" view -- low-ownership, in-form players -- on the Home
--- page; it was already captured in stg_players but wasn't previously
--- carried through to this table.
+-- Dimension: one row per player (prefix p_).
 select
-    player_id                            as p_id,
-    web_name                             as p_web_name,
-    concat(first_name, ' ', second_name) as p_full_name,
-    team_id                              as p_team,
-    position                             as p_position,
-    price                                as p_price,
-    ownership                            as p_ownership,
-    form                                 as p_form,
-    creativity                          as p_creativity,
-    threat                               as p_threat,
-    influence                            as p_influence,
-    news                                 as p_news,
-    news_date                            as p_news_date
+    p.player_id                              as p_id,
+    p.web_name                               as p_web_name,
+    concat(p.first_name, ' ', p.second_name) as p_full_name,
+    p.team_id                                as p_team,
+    p.position                               as p_position,
+    pos.name                                 as p_position_name,
+    p.price                                  as p_price,
+    p.start_price                            as p_start_price,
+    p.ownership                              as p_ownership,
+    p.form                                   as p_form,
+    p.creativity                             as p_creativity,
+    p.threat                                 as p_threat,
+    p.influence                              as p_influence,
+    p.news                                   as p_news,
+    p.news_date                              as p_news_date,
+    p.status                                 as p_status,
+    p.player_code                            as p_code,
+    p.penalties_order                        as p_penalties_order,
+    p.corners_order                          as p_corners_order,
+    p.direct_freekicks_order                 as p_direct_freekicks_order,
+    p.chance_of_playing                      as p_chance_of_playing
 from {{ ref('stg_players') }} p
-inner join {{ ref('seasons') }} s
-    on p.season = s.id
-where cast(getdate() as date) between s.start_date and s.end_date
+left join {{ ref('stg_positions') }} pos on pos.id = p.position

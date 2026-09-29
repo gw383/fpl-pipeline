@@ -1,0 +1,92 @@
+version: 2
+
+models:
+  - name: stg_players
+    description: Current-season players.
+    columns:
+      - name: player_id
+        tests: [not_null, unique]
+      - name: web_name
+        tests: [not_null]
+      - name: team_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_teams')
+              field: team_id
+      - name: position
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_positions')
+              field: id
+      - name: start_price
+        description: Price at the start of the season (now_cost - cost_change_start), in £m.
+
+  - name: stg_teams
+    description: Current-season teams.
+    columns:
+      - name: team_id
+        tests: [not_null, unique]
+      - name: short_name
+        tests: [not_null, unique]
+
+  - name: stg_positions
+    description: The four FPL positions for the current season.
+    columns:
+      - name: id
+        tests: [not_null, unique]
+
+  - name: stg_gameweeks
+    description: Current-season gameweeks.
+    columns:
+      - name: gameweek_id
+        tests: [not_null, unique]
+
+  - name: stg_fixtures
+    description: Current-season fixtures.
+    columns:
+      - name: fixture_id
+        tests: [not_null, unique]
+
+  - name: stg_player_gameweek
+    description: Current-season live stats, one row per player per gameweek.
+    columns:
+      - name: player_id
+        tests:
+          - relationships:
+              to: ref('stg_players')
+              field: player_id
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [player_id, gameweek_id]
+
+  - name: stg_manager_profiles
+    description: Tracked managers.
+  - name: stg_manager_picks
+    description: Tracked managers' picks per gameweek.
+  - name: stg_manager_gameweek_history
+    description: Tracked managers' per-gameweek summary.
+  - name: stg_manager_transfers
+    description: Tracked managers' transfers.
+  - name: stg_pl_goal_events
+    description: Goals from the Premier League match API (type Goal / Penalty / Own), current season.
+    columns:
+      - name: goal_type
+        tests:
+          - accepted_values:
+              values: ["Goal", "Penalty", "Own"]
+
+  - name: stg_player_history_past
+    description: Current-season players' previous Premier League seasons (FPL history_past).
+    columns:
+      - name: player_id
+        tests: [not_null]
+      - name: history_season
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [player_id, history_season]
+
+  - name: stg_pl_penalties_by_season
+    description: Penalty goals per player per season from the Premier League match API, with matchweeks loaded per season.

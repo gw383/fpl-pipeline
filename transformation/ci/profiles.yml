@@ -1,0 +1,14 @@
+# Placeholder profile so CI can run `dbt parse`, which never connects.
+fpl_pipeline:
+  target: ci
+  outputs:
+    ci:
+      type: sqlserver
+      driver: "ODBC Driver 18 for SQL Server"
+      server: localhost
+      port: 1433
+      database: fpl
+      schema: raw
+      user: ci
+      password: ci
+      threads: 1

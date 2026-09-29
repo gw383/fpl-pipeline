@@ -6,29 +6,19 @@
     )
 }}
 
--- Per-player-per-gameweek fantasy-points breakdown, derived from the raw
--- per-gameweek stats in analytics.player_stats and each player's position.
+-- Fact: each player's fantasy points per gameweek, broken down by scoring
+-- category (pf_*). The single source of truth for "where did the points
+-- come from"; the dashboard sums these columns over any gameweek range.
 --
--- This is the single source of truth for "what counts as fantasy points"
--- in this project. It used to be implemented as raw SQL inside
--- StreamLit/queries/player_stats.py (recomputed on every dashboard page
--- load, untested); it's now a versioned, tested dbt model instead, and
--- the Streamlit query layer just sums these columns over whatever
--- gameweek range the user picks.
+-- Rows are one per player per gameweek, so a double gameweek's stats are
+-- the combined total of both matches; the bands and thresholds below
+-- account for that where they can.
 --
--- pf_goals_conceded fixes a bug found in the original Streamlit-only
--- implementation, which derived goals-conceded points from `pg_saves`
--- instead of `pg_goals_conceded`, and applied them to every position
--- instead of just goalkeepers/defenders (the only positions that lose
--- points for goals conceded in real FPL scoring). See CHANGELOG.
---
--- Incremental: once a gameweek's data has been loaded and this table
--- has been built at least once, only gameweeks from the last 10 days
--- are reprocessed on subsequent runs (recent gameweeks can still have
--- their bonus points/stats corrected by FPL for a day or two after
--- kickoff; anything older is treated as final). Run
--- `dbt run --full-refresh --select player_points` to force a full
--- rebuild, e.g. after a season's worth of scoring-rule changes.
+-- Incremental: after the first build only gameweeks whose deadline falls
+-- inside the `player_points_lookback_days` window are rebuilt, matching the
+-- period in which FPL (and the extraction pipeline's grace window) can
+-- still revise recent stats. `dbt run --full-refresh -s player_points`
+-- rebuilds everything, e.g. after a scoring-rule change.
 
 select
     ps.pg_id       as pg_id,
@@ -38,19 +28,17 @@ select
     p.p_position   as p_position,
 
     -- Minutes: 1 point for 1-59 minutes, 2 points for 60+. The bands
-    -- above 90 handle a double gameweek, where the API's per-event
-    -- stats for a player can combine two matches' minutes.
+    -- above 90 approximate a double gameweek's combined minutes.
     case
-        when ps.pg_minutes >= 1   and ps.pg_minutes <= 60  then 1
+        when ps.pg_minutes >= 1   and ps.pg_minutes < 60   then 1
         when ps.pg_minutes >= 60  and ps.pg_minutes <= 90  then 2
         when ps.pg_minutes >= 90  and ps.pg_minutes <= 150 then 3
         when ps.pg_minutes >= 150 and ps.pg_minutes <= 180 then 4
         else 0
     end as pf_minutes,
 
-    -- Clean sheets: goalkeepers/defenders earn 4 (8 for two clean
-    -- sheets in one gameweek row, i.e. a double gameweek), midfielders
-    -- earn 1 (2), forwards earn none.
+    -- Clean sheets: GK/DEF earn 4, MID 1, FWD 0 (doubled for two clean
+    -- sheets in a double gameweek).
     case
         when ps.pg_clean_sheets = 1 and p.p_position in (1, 2) then 4
         when ps.pg_clean_sheets = 2 and p.p_position in (1, 2) then 8
@@ -61,18 +49,15 @@ select
 
     ps.pg_bonus as pf_bonus,
 
-    -- Saves: 1 point per 3 saves, calculated per gameweek rather than
-    -- on a season total -- flooring here and summing later gives the
-    -- same result as flooring a running total would, since FPL awards
-    -- save points per match, not retroactively across the season.
+    -- Saves: 1 point per 3 saves, awarded per match (so floored per
+    -- gameweek, never on a season total).
     floor(ps.pg_saves / 3.0) as pf_saves,
 
     ps.pg_pens_saved * 5  as pf_pen_saves,
     -ps.pg_yellow_cards   as pf_yellow,
     -ps.pg_red_cards * 3  as pf_red,
 
-    -- Goals conceded: only goalkeepers/defenders lose points for this,
-    -- 1 point per 2 goals conceded.
+    -- Goals conceded: GK/DEF lose 1 point per 2 goals conceded.
     case
         when p.p_position in (1, 2) then -floor(ps.pg_goals_conceded / 2.0)
         else 0
@@ -88,8 +73,8 @@ select
 
     ps.pg_assists * 3 as pf_assists,
 
-    -- Defensive contributions: defenders need 10 actions per 2 points,
-    -- midfielders/forwards need 12; goalkeepers don't earn these.
+    -- Defensive contributions: 2 points for every 10 actions (DEF) or 12
+    -- actions (MID/FWD); goalkeepers can't earn these.
     case
         when p.p_position = 2      then floor(ps.pg_defcons / 10.0) * 2
         when p.p_position in (3, 4) then floor(ps.pg_defcons / 12.0) * 2
@@ -104,5 +89,5 @@ left join {{ ref('players') }} p on ps.pg_id = p.p_id
 left join {{ ref('gameweeks') }} gw on ps.pg_gameweek = gw.gw_id
 
 {% if is_incremental() %}
-where gw.gw_deadline_time >= dateadd(day, -10, getdate())
+where gw.gw_deadline_time >= dateadd(day, -{{ var('player_points_lookback_days') }}, getdate())
 {% endif %}

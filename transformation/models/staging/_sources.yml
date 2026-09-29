@@ -1,0 +1,43 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Landing tables written by the Python extraction pipeline (extraction/).
+      Season-partitioned tables carry a `season` label and a
+      `load_timestamp`; manager tables are full snapshots replaced each run.
+    schema: raw
+    tables:
+      - name: raw_players
+        description: bootstrap-static `elements` -- one row per player per season.
+      - name: raw_teams
+        description: bootstrap-static `teams` -- one row per team per season.
+      - name: raw_positions
+        description: bootstrap-static `element_types` -- the four positions, per season.
+      - name: raw_gameweeks
+        description: bootstrap-static `events` -- one row per gameweek per season.
+      - name: raw_fixtures
+        description: The fixtures endpoint -- one row per fixture per season.
+      - name: raw_event_live
+        description: event/<gw>/live -- one row per player per gameweek per season.
+      - name: raw_manager_profiles
+        description: entry/<id> -- one row per tracked manager.
+      - name: raw_manager_picks
+        description: entry/<id>/event/<gw>/picks -- one row per manager, gameweek and pick.
+      - name: raw_manager_gameweek_history
+        description: The `entry_history` block of the picks endpoint -- one row per manager per gameweek.
+      - name: raw_manager_transfers
+        description: entry/<id>/transfers -- one row per transfer.
+      - name: raw_pl_goal_events
+        description: >
+          Premier League match API (premierleague.com) -- one row per goal,
+          with its type ("Goal", "Penalty", "Own"). Player and team codes are
+          the Opta codes FPL exposes as `code`. Loaded per matchweek, for the
+          current season and (once) the two previous seasons.
+      - name: raw_player_history_past
+        description: >
+          element-summary/<id> `history_past` -- one row per current player per
+          previous Premier League season, loaded once a season (partitioned by
+          the season it was loaded in).
+      - name: raw_player_history_checked
+        description: Which players' history has been fetched this season (so each is fetched once).
