@@ -1,221 +1,207 @@
-"""Shared ingestion helpers used across the extraction scripts.
+"""Shared helpers for the extraction scripts.
 
-Every raw-loading script follows one of two patterns:
+* **API access** -- one pooled HTTP session with retries for every call to
+  the FPL API (and the Premier League's match API, see pl_events.py).
+* **Loading** -- *season-partitioned* tables (players, teams, fixtures,
+  gameweeks, live stats) have the current season's rows (or one gameweek's
+  rows) deleted and re-inserted in a **single transaction**, so a failed or
+  concurrent run can never leave a partition empty or duplicated. Manager
+  tables are replaced one manager at a time the same way (see managers.py).
 
-* Season-partitioned tables (players, teams, fixtures, gameweeks,
-  event-live stats) delete the current season's rows and append the
-  freshly-fetched replacement, so re-running mid-season never creates
-  duplicates.
-* Manager-specific snapshots (profiles, picks, transfers) simply
-  replace the whole table, since they only ever need to hold the
-  latest pull for a small, hand-maintained list of FPL entry IDs.
-
-Centralising both patterns here means every ingestion script shares
-one implementation instead of five near-identical copies.
+* **Incremental gameweeks** -- deciding which gameweeks' live stats still
+  need (re-)fetching.
 """
+
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+import logging
+from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
-from sqlalchemy import text
-from sqlalchemy.engine import Engine
+import requests
+from requests.adapters import HTTPAdapter
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection, Engine
+from urllib3.util.retry import Retry
+
+from config import FPL_API_BASE_URL, REQUEST_TIMEOUT_SECONDS
+
+logger = logging.getLogger(__name__)
 
 RAW_SCHEMA = "raw"
 
-
-def utc_now() -> datetime:
-    """Return the current UTC timestamp used to stamp every load."""
-    return datetime.now(timezone.utc)
-
-
-def convert_nested_to_json(df: pd.DataFrame) -> pd.DataFrame:
-    """Serialise any dict/list columns in `df` to JSON strings.
-
-    SQL Server has no native column type for nested structures, so any
-    column holding dicts or lists (as the FPL API sometimes returns)
-    is flattened to JSON text before loading.
-    """
-    for col in df.columns:
-        if df[col].apply(lambda value: isinstance(value, (dict, list))).any():
-            df[col] = df[col].apply(
-                lambda value: json.dumps(value)
-                if isinstance(value, (dict, list))
-                else value
-            )
-    return df
-
-
-def delete_season_data(engine: Engine, table_name: str, season: str) -> None:
-    """Delete existing rows for `season` from raw.`table_name`.
-
-    Called before an append-style load so re-running the pipeline for
-    the same season never creates duplicate rows.
-    """
-    with engine.begin() as conn:
-        result = conn.execute(
-            text(f"DELETE FROM {RAW_SCHEMA}.{table_name} WHERE season = :season"),
-            {"season": season},
-        )
-        print(
-            f"Cleared {season} data from {RAW_SCHEMA}.{table_name} "
-            f"({result.rowcount} rows)"
-        )
-
-
-def delete_gameweek_data(
-    engine: Engine, table_name: str, season: str, gameweek: int
-) -> None:
-    """Delete existing rows for one `season` + `gameweek` from
-    raw.`table_name`.
-
-    Used by incremental loaders (see determine_gameweeks_to_fetch) that
-    only want to refresh specific gameweeks -- the ones that are new or
-    not yet finalised -- rather than the whole season.
-    """
-    with engine.begin() as conn:
-        result = conn.execute(
-            text(
-                f"DELETE FROM {RAW_SCHEMA}.{table_name} "
-                f"WHERE season = :season AND event_id = :gameweek"
-            ),
-            {"season": season, "gameweek": gameweek},
-        )
-        print(
-            f"Cleared season {season} GW{gameweek} data from "
-            f"{RAW_SCHEMA}.{table_name} ({result.rowcount} rows)"
-        )
-
-
-def get_ingested_values(
-    engine: Engine, table_name: str, season: str, column: str
-) -> set:
-    """Return the distinct `column` values already loaded into
-    raw.`table_name` for `season`.
-
-    E.g. get_ingested_values(engine, "raw_event_live", "2026-27", "event_id")
-    returns the set of gameweek numbers already ingested this season.
-    """
-    with engine.begin() as conn:
-        result = conn.execute(
-            text(
-                f"SELECT DISTINCT {column} FROM {RAW_SCHEMA}.{table_name} "
-                f"WHERE season = :season"
-            ),
-            {"season": season},
-        )
-        return {row[0] for row in result}
-
-
-# How many of the most-recently-ingested gameweeks stay in the refetch
-# pool even after FPL marks them data_checked -- see the "Newcastle vs
-# Leeds showing 0 for every stat" incident in CHANGELOG.md for exactly
-# why this exists. That gameweek's live stats for one specific match
-# were almost certainly captured mid-lag (this pipeline's one and only
-# ingestion run for that gameweek happened to land in the narrow window
-# where the rest of the gameweek had already posted but this one match's
-# provider data hadn't yet), and once FPL flipped data_checked to true
-# shortly after, _gameweeks_needing_fetch had no way of knowing its own
-# earlier capture was incomplete -- "ingested + checked" was already
-# true, so it silently stopped looking at that gameweek forever. FPL's
-# own data_checked flag exists precisely because a gameweek's stats can
-# still be corrected for a day or two after it finishes; this constant
-# gives our own pipeline the same kind of grace period, on our side,
-# against exactly that kind of one-match lag landing in a single
-# snapshot right before "checked" flips. 2 gameweeks is roughly a
-# fortnight of real time (gameweeks are ~weekly) -- comfortably past
-# FPL's own correction window -- without permanently re-fetching a
-# whole season's worth of already-settled gameweeks on every run.
+# The most recently ingested gameweeks keep being re-fetched for this many
+# gameweeks even after FPL marks them ``data_checked``. FPL can still correct
+# a finished gameweek's stats for a day or two; this guards against a
+# snapshot taken mid-correction (e.g. one match's stats not yet published)
+# becoming permanent.
 GRACE_GAMEWEEKS = 2
 
 
-def _gameweeks_needing_fetch(
-    all_gameweeks: list[int], ingested: set, checked: dict
-) -> list[int]:
-    """Pure decision logic behind determine_gameweeks_to_fetch, split out
-    so it can be unit tested without a database connection (see
-    tests/test_common.py).
+# ---------------------------------------------------------------------------
+# FPL API
+# ---------------------------------------------------------------------------
 
-    A gameweek needs fetching if any of these hold:
-      * it isn't in `ingested` yet, or
-      * it has been ingested, but `checked` doesn't mark it as
-        data_checked (i.e. FPL hadn't finished double-checking its
-        stats and bonus points as of the last bootstrap-static load) --
-        these can still be corrected for a day or two after a
-        gameweek's fixtures finish, or
-      * it's one of the GRACE_GAMEWEEKS most recently ingested
-        gameweeks (by gameweek number), even if already checked -- a
-        safety margin against a bad capture on our own side slipping
-        through right as data_checked flips (see GRACE_GAMEWEEKS above).
 
-    A gameweek with no entry in `checked` at all is treated as not yet
-    checked, so it's still fetched -- this only ever means an extra
-    safe fetch, never a skipped one.
+def _build_session() -> requests.Session:
+    """A pooled session that retries transient failures with backoff.
+
+    404s are deliberately *not* retried -- the API returns them for things
+    that legitimately don't exist yet (e.g. picks for a future gameweek).
+    """
+    retry = Retry(
+        total=3,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET",),
+    )
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    return session
+
+
+_SESSION = _build_session()
+
+
+def fetch_url_json(url: str, headers: dict[str, str] | None = None) -> Any:
+    """GET any ``url`` on the shared retrying session and decode the JSON body."""
+    response = _SESSION.get(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    return response.json()
+
+
+def fetch_json(path: str) -> Any:
+    """GET ``{FPL_API_BASE_URL}/{path}/`` and return the decoded JSON body."""
+    return fetch_url_json(f"{FPL_API_BASE_URL}/{path.strip('/')}/")
+
+
+# ---------------------------------------------------------------------------
+# Data preparation
+# ---------------------------------------------------------------------------
+
+
+def utc_now() -> datetime:
+    """Current UTC timestamp, used to stamp every load."""
+    return datetime.now(UTC)
+
+
+def convert_nested_to_json(df: pd.DataFrame) -> pd.DataFrame:
+    """Serialise any dict/list values in ``df`` to JSON strings.
+
+    SQL Server has no column type for nested structures, so the few nested
+    fields the FPL API returns are stored as JSON text.
+    """
+
+    def is_nested(value: Any) -> bool:
+        return isinstance(value, (dict, list))
+
+    for col in df.columns:
+        if df[col].map(is_nested).any():
+            df[col] = df[col].map(lambda value: json.dumps(value) if is_nested(value) else value)
+    return df
+
+
+def prepare_for_load(df: pd.DataFrame) -> pd.DataFrame:
+    """Stringify ``load_timestamp`` so SQL Server stores it consistently."""
+    df = df.copy()
+    df["load_timestamp"] = df["load_timestamp"].astype(str)
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Loading into the raw schema
+# ---------------------------------------------------------------------------
+
+
+def ensure_raw_schema(engine: Engine) -> None:
+    """Create the ``raw`` schema on a fresh database."""
+    with engine.begin() as conn:
+        conn.execute(text(f"IF SCHEMA_ID('{RAW_SCHEMA}') IS NULL EXEC('CREATE SCHEMA {RAW_SCHEMA}')"))
+
+
+def table_exists(conn: Connection, table_name: str) -> bool:
+    return inspect(conn).has_table(table_name, schema=RAW_SCHEMA)
+
+
+def replace_partition(
+    conn: Connection,
+    df: pd.DataFrame,
+    table_name: str,
+    season: str,
+    gameweek: int | None = None,
+) -> None:
+    """Replace one season's rows (or one season + gameweek's rows) in
+    ``raw.<table_name>`` with ``df``.
+
+    Runs on the caller's connection so several tables can share a single
+    transaction. The table is created by ``to_sql`` on first load.
+    """
+    deleted = 0
+    if table_exists(conn, table_name):
+        where = "season = :season"
+        params: dict[str, Any] = {"season": season}
+        if gameweek is not None:
+            where += " AND event_id = :gameweek"
+            params["gameweek"] = gameweek
+        deleted = conn.execute(text(f"DELETE FROM {RAW_SCHEMA}.{table_name} WHERE {where}"), params).rowcount
+
+    prepare_for_load(df).to_sql(table_name, conn, schema=RAW_SCHEMA, if_exists="append", index=False)
+
+    scope = f"{season} GW{gameweek}" if gameweek is not None else season
+    logger.info("raw.%s [%s]: replaced %s rows with %s", table_name, scope, deleted, len(df))
+
+
+# ---------------------------------------------------------------------------
+# Incremental gameweek selection
+# ---------------------------------------------------------------------------
+
+
+def _gameweeks_needing_fetch(all_gameweeks: list[int], ingested: set[int], checked: dict[int, bool]) -> list[int]:
+    """Pure decision logic behind :func:`determine_gameweeks_to_fetch`.
+
+    A gameweek needs fetching if it has never been ingested, if FPL hasn't
+    yet marked it ``data_checked`` (a gameweek missing from ``checked`` is
+    treated as unchecked), or if it is one of the ``GRACE_GAMEWEEKS`` most
+    recently ingested gameweeks. Input order is preserved.
     """
     already_ingested = sorted(gw for gw in all_gameweeks if gw in ingested)
     grace_window = set(already_ingested[-GRACE_GAMEWEEKS:])
 
-    return [
-        gw
-        for gw in all_gameweeks
-        if gw not in ingested or not checked.get(gw, False) or gw in grace_window
-    ]
+    return [gw for gw in all_gameweeks if gw not in ingested or not checked.get(gw, False) or gw in grace_window]
 
 
 def determine_gameweeks_to_fetch(
     engine: Engine,
     all_gameweeks: list[int],
     season: str,
-    event_live_table: str = "raw_event_live",
+    table_name: str,
 ) -> list[int]:
-    """Work out which of `all_gameweeks` still need (re-)fetching.
+    """Return the subset of ``all_gameweeks`` whose live stats in
+    ``raw.<table_name>`` are missing or may still change.
 
-    A gameweek that's both already ingested into raw.`event_live_table`
-    and marked data_checked in raw.raw_gameweeks is treated as settled
-    and skipped -- this is what turns event_live's load from a full
-    re-fetch of every gameweek on every run into an incremental one.
-    "Settled" isn't quite "never touched again" any more, though: the
-    GRACE_GAMEWEEKS most recently ingested gameweeks keep getting
-    refetched for a while even once checked, as a safety margin against
-    a bad one-off capture slipping through right as data_checked flips
-    (see GRACE_GAMEWEEKS's own comment for the incident that motivated
-    this). Only once a gameweek has aged out of that trailing window is
-    it truly final (short of a manual re-ingest). See
-    _gameweeks_needing_fetch for the actual decision logic.
+    Settled gameweeks (ingested, ``data_checked`` and outside the grace
+    window) are skipped, which turns the live-stats load into an
+    incremental one.
     """
-    ingested = get_ingested_values(engine, event_live_table, season, "event_id")
+    with engine.connect() as conn:
+        if not table_exists(conn, table_name):
+            return list(all_gameweeks)
 
-    with engine.begin() as conn:
-        result = conn.execute(
-            text(
-                f"SELECT id, data_checked FROM {RAW_SCHEMA}.raw_gameweeks "
-                f"WHERE season = :season"
-            ),
-            {"season": season},
-        )
-        checked = {row[0]: bool(row[1]) for row in result}
+        ingested = {
+            row[0]
+            for row in conn.execute(
+                text(f"SELECT DISTINCT event_id FROM {RAW_SCHEMA}.{table_name} WHERE season = :season"),
+                {"season": season},
+            )
+        }
+        checked = {
+            row[0]: bool(row[1])
+            for row in conn.execute(
+                text(f"SELECT id, data_checked FROM {RAW_SCHEMA}.raw_gameweeks WHERE season = :season"),
+                {"season": season},
+            )
+        }
 
     return _gameweeks_needing_fetch(all_gameweeks, ingested, checked)
-
-
-def load_table_append(df: pd.DataFrame, table_name: str, engine: Engine) -> None:
-    """Append `df` to raw.`table_name`.
-
-    Used for season-partitioned tables, after `delete_season_data` has
-    already removed that season's previous rows.
-    """
-    df["load_timestamp"] = df["load_timestamp"].astype(str)
-    df.to_sql(table_name, engine, schema=RAW_SCHEMA, if_exists="append", index=False)
-    print(f"Loaded {RAW_SCHEMA}.{table_name} ({len(df)} rows)")
-
-
-def load_table_replace(df: pd.DataFrame, table_name: str, engine: Engine) -> None:
-    """Replace raw.`table_name` entirely with `df`.
-
-    Used for manager-specific snapshots, which only ever need to hold
-    the latest pull rather than a running history.
-    """
-    df["load_timestamp"] = df["load_timestamp"].astype(str)
-    df.to_sql(table_name, engine, schema=RAW_SCHEMA, if_exists="replace", index=False)
-    print(f"Loaded {RAW_SCHEMA}.{table_name} ({len(df)} rows)")

@@ -1,12 +1,10 @@
-{{ config(materialized='table') }}
+-- Fact: one row per tracked manager per gameweek.
 
--- One row per tracked manager per gameweek: points, running total,
--- overall rank, budget, transfer activity that gameweek, and any chip
--- played -- feeds the My Team page's headline stats (most recent
--- gameweek) and could equally back a rank/points trend chart later
--- (the same shape queries.player_stats.get_gwk already feeds
--- charts.gameweek_trend with, just at manager level instead of
--- player level).
+-- Materialised as a view (not a table like the rest of analytics) so a
+-- manager the dashboard loads on demand appears as soon as their raw rows
+-- are written, without waiting for the next dbt run.
+{{ config(materialized='view') }}
+
 select
     entry_id         as m_id,
     gw_id            as gw_id,

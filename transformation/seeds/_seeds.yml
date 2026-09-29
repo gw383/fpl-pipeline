@@ -1,0 +1,37 @@
+version: 2
+
+seeds:
+  - name: seasons
+    description: >
+      One row per Premier League season. Every staging model keeps only the
+      season whose start/end dates contain today (see
+      macros/current_season.sql), matched on display_name -- which must equal
+      the FPL_SEASON label the extraction pipeline stamps on raw rows. Add a
+      row here before each new season.
+    config:
+      column_types:
+        id: int
+        display_name: varchar(10)
+        start_date: date
+        end_date: date
+    columns:
+      - name: id
+        tests: [not_null, unique]
+      - name: display_name
+        tests: [not_null, unique]
+
+  - name: team_branding
+    description: >
+      Club colours and badge image per team, keyed on FPL's short name (stable
+      across seasons, unlike team IDs). Used by the dashboard's team and
+      player banners. Add a row when a promoted club joins.
+    config:
+      column_types:
+        short_name: varchar(3)
+        team_name: varchar(50)
+        primary_colour: varchar(7)
+        secondary_colour: varchar(7)
+        badge_file: varchar(50)
+    columns:
+      - name: short_name
+        tests: [not_null, unique]

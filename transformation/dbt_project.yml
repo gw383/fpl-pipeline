@@ -1,5 +1,6 @@
 name: fpl_pipeline
-version: '1.0.0'
+version: "1.0.0"
+config-version: 2
 profile: fpl_pipeline
 
 model-paths: ["models"]
@@ -7,18 +8,23 @@ analysis-paths: ["analyses"]
 test-paths: ["tests"]
 seed-paths: ["seeds"]
 macro-paths: ["macros"]
-snapshot-paths: ["snapshots"]
 
 clean-targets:
   - target
   - dbt_packages
+
+vars:
+  # How far back (in days of gameweek deadlines) the incremental
+  # player_points model rebuilds on each run. Covers the window in which
+  # FPL can still correct recent stats and the extraction pipeline's
+  # grace-period refetch.
+  player_points_lookback_days: 21
 
 models:
   fpl_pipeline:
     staging:
       +schema: stg
       +materialized: view
-
     analytics:
       +schema: analytics
       +materialized: table

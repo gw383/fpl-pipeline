@@ -1,0 +1,35 @@
+[project]
+name = "fpl-pipeline"
+version = "1.0.0"
+description = "End-to-end Fantasy Premier League data pipeline: Python extraction, SQL Server, dbt, Airflow and a Streamlit dashboard."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "George Williams" }]
+
+[tool.pytest.ini_options]
+# extraction/, projections/ and dashboard/ are run as script directories,
+# not installed packages, so tests import their modules the same way the
+# apps do.
+pythonpath = ["extraction", "projections", "dashboard"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["airflow/logs", "transformation/dbt_packages", "transformation/target"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",  # long lines are mostly inline HTML/SQL
+    "B905",  # zip() over st.columns intentionally stops at the shorter side
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "bootstrap_static", "check_connection", "common", "config", "db", "event_live", "fixtures", "ingest", "managers",
+    "pl_events",
+    "backtest", "inputs", "league", "model", "run",
+    "best_xi", "charts", "manager_loader", "components", "database", "formatting", "queries", "settings", "theme",
+]

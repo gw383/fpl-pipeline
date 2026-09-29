@@ -1,0 +1,136 @@
+version: 2
+
+models:
+  - name: players
+    description: Dimension -- one row per player (prefix p_).
+    columns:
+      - name: p_id
+        tests: [not_null, unique]
+      - name: p_position_name
+        description: Goalkeeper / Defender / Midfielder / Forward.
+      - name: p_penalties_order
+        description: FPL's penalty-taker order for his team (1 = first choice); null if not listed.
+      - name: p_corners_order
+        description: FPL's corners and indirect free-kicks order (1 = first choice); null if not listed.
+      - name: p_direct_freekicks_order
+        description: FPL's direct free-kicks order (1 = first choice); null if not listed.
+      - name: p_start_price
+        description: >
+          Price at the start of the season in £m. The projection model uses it
+          as a prior on player and team strength (see docs/rating_methodology.md).
+
+  - name: teams
+    description: >
+      Dimension -- one row per team (prefix team_), including club colours and
+      badge file from the team_branding seed.
+    columns:
+      - name: team_id
+        tests: [not_null, unique]
+      - name: team_badge_file
+        description: File name under dashboard/assets/badges/.
+
+  - name: gameweeks
+    description: Dimension -- one row per gameweek (prefix gw_).
+    columns:
+      - name: gw_id
+        tests: [not_null, unique]
+
+  - name: fixtures
+    description: Fact -- one row per fixture (prefix f_).
+    columns:
+      - name: f_id
+        tests: [not_null, unique]
+
+  - name: player_stats
+    description: Fact -- one row per player per gameweek (prefix pg_).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [pg_id, pg_gameweek]
+
+  - name: player_points
+    description: >
+      Fact -- each player's fantasy points per gameweek split by scoring
+      category (pf_*). Incremental (delete+insert on pg_id, pg_gameweek).
+    columns:
+      - name: pg_id
+        tests: [not_null]
+      - name: pg_gameweek
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [pg_id, pg_gameweek]
+
+  - name: team_gameweek_stats
+    description: >
+      Fact -- one row per team per gameweek with team xG and xA (summed over
+      its players) and xGA (the opponent's xG in the same match).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [team_id, gw_id]
+
+  - name: team_fixture_results
+    description: >
+      Fact -- one row per team per finished fixture from that team's side:
+      score, W/D/L and underlying xG/xA/xGA (combined across both matches in
+      a double gameweek, flagged by is_double_gw).
+    columns:
+      - name: result
+        tests:
+          - accepted_values:
+              values: ["W", "D", "L"]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [f_id, team_id]
+
+  - name: player_penalties
+    description: >
+      Fact -- penalties taken per player per FPL gameweek (scored, from the
+      Premier League match API, plus missed, from FPL). Feeds the projection
+      model's split of xG into open play and penalties.
+    columns:
+      - name: penalties_taken
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [p_id, gw_id]
+
+  - name: manager_profile
+    description: Dimension -- one row per tracked FPL manager (prefix m_).
+    columns:
+      - name: m_id
+        tests: [not_null, unique]
+
+  - name: manager_gameweek_history
+    description: Fact -- one row per tracked manager per gameweek.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [m_id, gw_id]
+
+  - name: manager_squad
+    description: Each tracked manager's latest 15-man squad with player ratings.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [m_id, squad_position]
+
+  - name: manager_transfers
+    description: Fact -- one row per transfer with player names on both sides.
+
+  - name: player_past_seasons
+    description: >
+      Fact -- each current player's previous Premier League seasons (prefix
+      ps_) with penalties taken, used by the projection model as a prior on
+      ability.
+    columns:
+      - name: p_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('players')
+              field: p_id
+      - name: ps_seasons_ago
+        description: 1 = last season, 2 = the season before, ...
+      - name: ps_penalties_known
+        description: 1 if that season's Premier League goal events are fully loaded (so penalties taken are complete).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [p_id, ps_season]

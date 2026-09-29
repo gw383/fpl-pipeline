@@ -1,6 +1,4 @@
-{{ config(materialized='table') }}
-
--- Fact table: one row per fixture, prefixed f_ for easy joining.
+-- Fact: one row per fixture (prefix f_).
 select
     fixture_id        as f_id,
     gameweek          as f_gameweek,
@@ -11,7 +9,4 @@ select
     home_difficulty   as f_home_diff,
     away_difficulty   as f_away_diff,
     finished          as f_finished
-from {{ ref('stg_fixtures') }} p
-inner join {{ ref('seasons') }} s
-    on p.season = s.id
-where cast(getdate() as date) between s.start_date and s.end_date
+from {{ ref('stg_fixtures') }}

@@ -1,35 +1,24 @@
-"""Standalone diagnostic: verifies local SQL Server connectivity.
+"""Quick connectivity check: ``python extraction/check_connection.py``.
 
-Run directly with `python check_connection.py` to sanity-check that
-the SQL Server ODBC driver and instance are reachable before running
-the full pipeline. Uses Windows-integrated authentication and is
-independent of the FPL_DB_USER / FPL_DB_PASSWORD credentials the
-pipeline itself uses (see db.py) -- this is a host/driver check, not a
-pipeline credential check.
-
-(Renamed from the original connection-test.py: a hyphen isn't valid in
-a Python module name, so the old filename couldn't be imported --
-only ever run directly, which this preserves.)
+Uses exactly the same connection settings as the pipeline (see db.py), so a
+successful run means ``ingest.py`` will be able to reach the database too.
 """
+
 from __future__ import annotations
 
-import pyodbc
+from sqlalchemy import text
 
-CONNECTION_STRING = (
-    "DRIVER={ODBC Driver 18 for SQL Server};"
-    "SERVER=localhost;"
-    "DATABASE=fpl;"
-    "Trusted_Connection=yes;"
-    "TrustServerCertificate=yes;"
-)
+from db import build_connection_string, get_engine
 
 
 def check_connection() -> None:
-    """Open a connection and run a trivial query to confirm connectivity."""
-    conn = pyodbc.connect(CONNECTION_STRING)
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1")
-    print(cursor.fetchone())
+    """Open a connection, run ``SELECT @@VERSION`` and print the result."""
+    safe = ";".join(part for part in build_connection_string().split(";") if not part.upper().startswith("PWD="))
+    print(f"Connecting with: {safe}")
+    with get_engine().connect() as conn:
+        version = conn.execute(text("SELECT @@VERSION")).scalar_one()
+    print("Connected OK.")
+    print(version.splitlines()[0])
 
 
 if __name__ == "__main__":

@@ -1,8 +1,5 @@
-{{ config(materialized='table') }}
-
--- Fact table: one row per player per gameweek, prefixed pg_ (player
--- gameweek). This is the grain everything in the Streamlit "queries"
--- layer aggregates over.
+-- Fact: one row per player per gameweek (prefix pg_) -- the grain every
+-- player-level dashboard query aggregates over.
 select
     player_id         as pg_id,
     points            as pg_points,
@@ -32,7 +29,4 @@ select
     dream_team        as pg_dreamteam,
     played            as pg_played,
     gameweek_id       as pg_gameweek
-from {{ ref('stg_player_gameweek') }} p
-inner join {{ ref('seasons') }} s
-    on p.season = s.id
-where cast(getdate() as date) between s.start_date and s.end_date
+from {{ ref('stg_player_gameweek') }}

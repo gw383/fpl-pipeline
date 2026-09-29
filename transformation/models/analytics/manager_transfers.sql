@@ -1,10 +1,10 @@
-{{ config(materialized='table') }}
+-- Fact: one row per transfer, with player names/positions on both sides.
 
--- One row per transfer a tracked manager has ever made, with the
--- player names/positions resolved on both sides -- raw.raw_manager_
--- transfers only carries element ids (player_in_id/player_out_id), so
--- this is the one place that join happens rather than every consumer
--- redoing it.
+-- Materialised as a view (not a table like the rest of analytics) so a
+-- manager the dashboard loads on demand appears as soon as their raw rows
+-- are written, without waiting for the next dbt run.
+{{ config(materialized='view') }}
+
 select
     mt.entry_id         as m_id,
     mt.gw_id            as gw_id,
