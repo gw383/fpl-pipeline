@@ -72,10 +72,11 @@ defcons_p90 = per_90(stat["defcons"], minutes)
 st.html(
     club_banner_html(
         f"""
-        <div style="font-size:36px;font-weight:800;line-height:1.05;letter-spacing:-0.02em;
+        <div class="fpl-banner-title" style="font-size:36px;font-weight:800;line-height:1.05;letter-spacing:-0.02em;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{player_name}</div>
         <div style="margin-top:8px;">{banner_stars_html(star, team_colour)}</div>
-        <div style="margin-top:6px;font-size:17px;font-weight:500;opacity:0.9;white-space:nowrap;">
+        <div class="fpl-banner-meta" style="margin-top:6px;font-size:17px;font-weight:500;opacity:0.9;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
             {info_row["team"]} &middot; {position} &middot; £{info_row["price"]}m
         </div>
         {news_banner_html(info_row["news"])}

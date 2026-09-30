@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from components.card import card
+from components.layout import side_by_side
 from components.metric_card import metric_row
 from components.pitch import gameweek_points_html, pitch_html, shirt_svg, squad_card, team_expected_points
 from manager_loader import ManagerNotFound, load_manager, parse_manager_id
@@ -69,7 +70,7 @@ st.html(
 
 known = get_known_managers()
 lookup_col, saved_col = st.columns([2, 3], gap="large", vertical_alignment="bottom")
-with lookup_col, st.form("manager_lookup", border=False):
+with lookup_col, side_by_side("manager-lookup"), st.form("manager_lookup", border=False):
     id_col, button_col = st.columns([3, 2], vertical_alignment="bottom")
     typed_id = id_col.text_input("FPL manager ID", value=str(st.session_state["manager_id"]), help=ID_HELP)
     submitted = button_col.form_submit_button("Show team", type="primary", width="stretch")
@@ -203,18 +204,20 @@ with squad_col, card("my_team-1"):
     bench = squad[squad["is_starting"] == 0].sort_values("squad_position")
     bench_cards = "".join(
         f"""
-        <div style="flex:1;min-width:0;background:{PAGE_BG};border:1px solid {BORDER};border-radius:{RADIUS_SM};
-                    padding:10px;text-align:center;">
+        <div class="fpl-bench-card" style="flex:1;min-width:0;background:{PAGE_BG};border:1px solid {BORDER};
+                    border-radius:{RADIUS_SM};padding:10px;text-align:center;">
             {shirt_svg(row["team_primary_colour"], row["team_secondary_colour"], int(row["p_position"]) == 1, size=26)}
-            <div style="font-size:10.5px;font-weight:700;color:{POSITION_COLOURS.get(int(row["p_position"]), TEXT_MUTED)};">
+            <div class="fpl-bench-pos"
+                 style="font-size:10.5px;font-weight:700;color:{POSITION_COLOURS.get(int(row["p_position"]), TEXT_MUTED)};">
                 {POSITION_LABELS.get(int(row["p_position"]), "")}
                 <span style="color:{TEXT_MUTED};">&middot; SUB {int(row["squad_position"]) - 11}</span>
             </div>
-            <div style="font-size:13px;font-weight:700;color:{TEXT_PRIMARY};margin-top:3px;white-space:nowrap;
+            <div class="fpl-bench-name" style="font-size:13px;font-weight:700;color:{TEXT_PRIMARY};margin-top:3px;
+                        white-space:nowrap;
                         overflow:hidden;text-overflow:ellipsis;">
                 {row["web_name"] if pd.notna(row["web_name"]) else row["player"]}
             </div>
-            <div style="font-size:11px;color:{TEXT_MUTED};">{row["team_short_name"]}</div>
+            <div class="fpl-bench-team" style="font-size:11px;color:{TEXT_MUTED};">{row["team_short_name"]}</div>
             {gameweek_points_html(row)}
         </div>
         """
@@ -222,7 +225,7 @@ with squad_col, card("my_team-1"):
     )
     st.html(
         f'<div style="font-size:12px;font-weight:700;letter-spacing:0.06em;color:{TEXT_MUTED};margin:14px 0 8px 0;">'
-        f'BENCH</div><div style="display:flex;gap:8px;">{bench_cards}</div>'
+        f'BENCH</div><div class="fpl-bench" style="display:flex;gap:8px;">{bench_cards}</div>'
     )
 
 # ---------------------------------------------------------------------------

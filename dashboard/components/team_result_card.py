@@ -20,8 +20,8 @@ _RESULT_LABEL = {"W": "Win", "D": "Draw", "L": "Loss"}
 
 def _stat_chip(label: str, value: float) -> str:
     return f"""
-    <div style="text-align:center;min-width:56px;">
-        <div style="font-size:16px;font-weight:700;color:{TEXT_PRIMARY};font-variant-numeric:tabular-nums;">
+    <div class="fpl-chip" style="text-align:center;min-width:56px;">
+        <div class="fpl-chip-value" style="font-size:16px;font-weight:700;color:{TEXT_PRIMARY};font-variant-numeric:tabular-nums;">
             {value:.2f}
         </div>
         <div style="font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:{TEXT_MUTED};">
@@ -67,7 +67,7 @@ def team_result_card(row, goalscorers: str, assisters: str) -> str:
         """
 
     return f"""
-    <div style="
+    <div class="fpl-result" style="
         background:{SURFACE};
         border:1px solid {BORDER};
         border-radius:{RADIUS_SM};
@@ -75,7 +75,8 @@ def team_result_card(row, goalscorers: str, assisters: str) -> str:
         margin-bottom:10px;
         box-shadow:{SHADOW_CARD};
     ">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+        <div class="fpl-result-top"
+             style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
 
             <!-- Gameweek / opponent / score -->
             <div style="min-width:0;">
@@ -86,7 +87,7 @@ def team_result_card(row, goalscorers: str, assisters: str) -> str:
                     vs {row["opponent"]} <span style="color:{TEXT_MUTED};font-weight:600;">({row["venue"]})</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
-                    <span style="font-size:26px;font-weight:800;color:{TEXT_PRIMARY};font-variant-numeric:tabular-nums;">
+                    <span class="fpl-result-score" style="font-size:26px;font-weight:800;color:{TEXT_PRIMARY};font-variant-numeric:tabular-nums;">
                         {int(row["own_score"])} &ndash; {int(row["opp_score"])}
                     </span>
                     <span style="
@@ -103,7 +104,7 @@ def team_result_card(row, goalscorers: str, assisters: str) -> str:
             </div>
 
             <!-- Underlying xG/xA/xGA -->
-            <div style="display:flex;gap:16px;">
+            <div class="fpl-result-chips" style="display:flex;gap:16px;">
                 {_stat_chip("xG", row["team_xg"])}
                 {_stat_chip("xA", row["team_xa"])}
                 {_stat_chip("xGA", row["team_xga"])}

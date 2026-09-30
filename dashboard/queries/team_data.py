@@ -27,6 +27,7 @@ def get_team_fixtures() -> pd.DataFrame:
         select
             tf.team_id,
             t.team_name,
+            t.team_short_name,
             t.team_table_position,
             t.team_badge_file,
             tf.gw,

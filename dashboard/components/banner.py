@@ -25,7 +25,8 @@ def banner_stars_html(rating: float, primary_colour: str | None, size: int = 22)
     empty = "rgba(255,255,255,0.35)" if light_text else "rgba(11,11,11,0.18)"
     return (
         f"{stars_html(rating, size=size, empty_colour=empty)}"
-        f'<span style="font-size:{int(size * 0.75)}px;font-weight:700;margin-left:8px;">{rating:.1f}/10</span>'
+        f'<span class="fpl-rating-number" style="font-size:{int(size * 0.75)}px;font-weight:700;margin-left:8px;">'
+        f"{rating:.1f}/10</span>"
     )
 
 
@@ -36,18 +37,20 @@ def club_banner_html(
     badge_file: str | None,
     size: str = "large",
     min_height: int | None = None,
+    tall: bool = False,
 ) -> str:
     """A banner in the club's primary colour with ``body_html`` on the left and
     the club badge on a secondary-colour panel on the right.
 
     ``min_height`` overrides the size's default, e.g. so two banners shown
-    side by side can be given the same height."""
+    side by side can be given the same height; ``tall`` does the same on
+    phones, where theme.py sets the heights (e.g. when either has news)."""
     dims = _SIZES[size]
     primary = primary_colour or "#2a78d6"
     secondary = secondary_colour or SURFACE
     badge = image_base64(BADGES_DIR / badge_file) if badge_file else ""
     badge_img = (
-        f'<img src="data:image/png;base64,{badge}" style="position:absolute;top:50%;left:50%;'
+        f'<img class="fpl-banner-badge" src="data:image/png;base64,{badge}" style="position:absolute;top:50%;left:50%;'
         f"transform:translate(-50%,-50%);width:{dims['badge']}px;height:{dims['badge']}px;"
         f'object-fit:contain;">'
         if badge
@@ -56,8 +59,9 @@ def club_banner_html(
 
     # The body sits in normal flow so a news line can grow the banner instead
     # of overflowing it; the badge panel is pinned to the right.
+    classes = "fpl-banner fpl-banner-tall" if tall else "fpl-banner"
     return f"""
-    <div style="
+    <div class="{classes}" style="
         min-height:{min_height or dims["height"]}px;
         width:100%;
         position:relative;
@@ -82,7 +86,7 @@ def club_banner_html(
         ">
             {body_html}
         </div>
-        <div style="
+        <div class="fpl-banner-panel" style="
             position:absolute;
             right:{dims["panel_right"]};
             top:0;

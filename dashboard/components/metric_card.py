@@ -1,7 +1,10 @@
 """A headline stat card: label, big value and an optional "#rank" pill."""
 
+import hashlib
+
 import streamlit as st
 
+from components.layout import metrics_container
 from theme import BLUE, BORDER, RADIUS_SM, SHADOW_CARD, SURFACE, TEXT_MUTED, TEXT_PRIMARY, rgba
 
 
@@ -11,13 +14,14 @@ def metric_card_html(title: str, value, rank=None, rank_hint: str = "") -> str:
     length = len(str(value)) + (3 if rank is not None else 0)
     value_size = 26 if length <= 7 else 22 if length <= 10 else 19
     rank_html = (
-        f'<span title="{rank_hint}" style="flex-shrink:0;background:{rgba(BLUE, 0.10)};color:{BLUE};'
-        f'padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;">#{rank}</span>'
+        f'<span class="fpl-metric-rank" title="{rank_hint}" style="flex-shrink:0;background:{rgba(BLUE, 0.10)};'
+        f"color:{BLUE};padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;"
+        f'white-space:nowrap;">#{rank}</span>'
         if rank is not None
         else ""
     )
     return f"""
-    <div style="
+    <div class="fpl-metric" style="
         background:{SURFACE};
         border:1px solid {BORDER};
         border-radius:{RADIUS_SM};
@@ -26,7 +30,7 @@ def metric_card_html(title: str, value, rank=None, rank_hint: str = "") -> str:
         min-height:92px;
         box-sizing:border-box;
     ">
-        <div style="
+        <div class="fpl-metric-title" style="
             font-size:11.5px;
             font-weight:600;
             letter-spacing:0.04em;
@@ -36,8 +40,9 @@ def metric_card_html(title: str, value, rank=None, rank_hint: str = "") -> str:
             overflow:hidden;
             text-overflow:ellipsis;
         " title="{title}">{title}</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;">
-            <div style="
+        <div class="fpl-metric-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;
+                    margin-top:10px;">
+            <div class="fpl-metric-value" style="
                 font-size:{value_size}px;
                 font-weight:700;
                 min-width:0;
@@ -68,12 +73,18 @@ def metric_card(title: str, value, rank=None, rank_hint: str = "") -> None:
     st.html(metric_card_html(title, value, rank, rank_hint))
 
 
-def metric_row(cards: list[tuple], rank_hint: str = "", per_row: int | None = None) -> None:
-    """Render ``(title, value[, rank])`` tuples as a row (or rows) of cards."""
+def metric_row(cards: list[tuple], rank_hint: str = "", per_row: int | None = None, key: str = "") -> None:
+    """Render ``(title, value[, rank])`` tuples as a row (or rows) of cards.
+
+    On phones the cards wrap two per row (see components.layout). ``key``
+    tells apart two rows with the same titles on one page."""
     per_row = per_row or len(cards)
-    for start in range(0, len(cards), per_row):
-        chunk = cards[start : start + per_row]
-        for col, card in zip(st.columns(per_row), chunk):
-            title, value, *rank = card
-            with col:
-                metric_card(title, value, _rank_or_none(rank[0] if rank else None), rank_hint)
+    titles = "|".join(str(card[0]) for card in cards)
+    container_key = f"{key}-{hashlib.md5(titles.encode()).hexdigest()[:8]}"
+    with metrics_container(container_key):
+        for start in range(0, len(cards), per_row):
+            chunk = cards[start : start + per_row]
+            for col, card in zip(st.columns(per_row), chunk):
+                title, value, *rank = card
+                with col:
+                    metric_card(title, value, _rank_or_none(rank[0] if rank else None), rank_hint)

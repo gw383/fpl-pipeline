@@ -20,11 +20,12 @@ def pitch_html(players: pd.DataFrame, card: Callable[[pd.Series], str], height: 
         for position in (1, 2, 3, 4)
     )
     row_html = "".join(
-        f'<div style="display:flex;justify-content:space-evenly;align-items:center;min-width:0;">{cards}</div>'
+        f'<div class="fpl-pitch-row" style="display:flex;justify-content:space-evenly;align-items:center;'
+        f'min-width:0;">{cards}</div>'
         for cards in rows
     )
     return f"""
-    <div style="
+    <div class="fpl-pitch" style="
         width:100%;
         height:{height}px;
         margin-top:5px;
@@ -75,7 +76,8 @@ def shirt_svg(primary: str | None, secondary: str | None, goalkeeper: bool = Fal
     )
     data = base64.b64encode(svg.encode()).decode()
     return (
-        f'<img src="data:image/svg+xml;base64,{data}" width="{size}" height="{int(size * 60 / 64)}" alt="" '
+        f'<img class="fpl-shirt" src="data:image/svg+xml;base64,{data}" width="{size}" '
+        f'height="{int(size * 60 / 64)}" alt="" '
         'style="display:block;margin:0 auto 3px auto;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,0.3));">'
     )
 
@@ -95,10 +97,13 @@ def _display_name(row: pd.Series) -> str:
 
 def _name_plate(name: str, subtitle: str = "") -> str:
     subtitle_html = (
-        f'<div style="font-size:9px;font-weight:600;color:#6b6b6b;margin-top:1px;">{subtitle}</div>' if subtitle else ""
+        f'<div class="fpl-plate-sub" style="font-size:9px;font-weight:600;color:#6b6b6b;margin-top:1px;">'
+        f"{subtitle}</div>"
+        if subtitle
+        else ""
     )
     return f"""
-    <div style="
+    <div class="fpl-plate" style="
         background:#ffffff;
         border-radius:6px;
         padding:5px 4px;
@@ -108,14 +113,14 @@ def _name_plate(name: str, subtitle: str = "") -> str:
         line-height:13px;
         color:{TEXT_PRIMARY};
     ">
-        {name}{subtitle_html}
+        <div class="fpl-plate-name">{name}</div>{subtitle_html}
     </div>
     """
 
 
 def _value_pill(text: str) -> str:
     return f"""
-    <div style="
+    <div class="fpl-pill" style="
         display:inline-block;
         background:rgba(11,11,11,0.55);
         border-radius:999px;
@@ -139,7 +144,7 @@ def _format_metric(value) -> str:
 def best_xi_card(row: pd.Series) -> str:
     """Club shirt, player name and team, with the selected metric underneath."""
     return f"""
-    <div style="text-align:center;width:84px;">
+    <div class="fpl-pitch-card" style="text-align:center;width:84px;">
         {_row_shirt(row)}
         {_name_plate(_display_name(row), row.get("team_short_name") or "")}
         {_value_pill(_format_metric(row["metric_value"]))}
@@ -180,14 +185,15 @@ def gameweek_points_html(row: pd.Series, multiplier: int = 1) -> str:
     if kicked_off > 0:
         points = int((actual or 0) * multiplier)
         actual_html = f"""
-        <div style="display:inline-block;background:#ffffff;color:{TEXT_PRIMARY};border-radius:999px;padding:2px 6px;
+        <div class="fpl-pill" style="display:inline-block;background:#ffffff;color:{TEXT_PRIMARY};border-radius:999px;
+                    padding:2px 6px;
                     font-size:10.5px;font-weight:800;margin-top:4px;box-shadow:0 1px 2px rgba(0,0,0,0.25);
                     white-space:nowrap;">
             {points} pts
         </div>
         """
         return (
-            '<div style="display:flex;justify-content:center;gap:3px;flex-wrap:nowrap;">'
+            '<div class="fpl-pills" style="display:flex;justify-content:center;gap:3px;flex-wrap:nowrap;">'
             f"{actual_html}{expected_html}</div>"
         )
     return expected_html
@@ -204,7 +210,7 @@ def squad_card(row: pd.Series) -> str:
     if badge:
         multiplier_text = f" &times;{multiplier}" if multiplier > 1 else ""
         badge_html = f"""
-        <div style="
+        <div class="fpl-captain" style="
             position:absolute;
             top:-4px;
             right:2px;
@@ -227,7 +233,7 @@ def squad_card(row: pd.Series) -> str:
         xpts = row.get("xpts_next_gw")
         points_html = _value_pill(f"{float(xpts):.1f} xP") if pd.notna(xpts) else ""
     return f"""
-    <div style="text-align:center;width:104px;position:relative;">
+    <div class="fpl-pitch-card" style="text-align:center;width:104px;position:relative;">
         {badge_html}
         {_row_shirt(row)}
         {_name_plate(_display_name(row), row["team_short_name"])}

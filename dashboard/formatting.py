@@ -64,7 +64,9 @@ def stars_html(
         else:
             style = f"color:{empty_colour};"
         spans.append(f'<span style="{style}">★</span>')
-    return f'<span style="font-size:{size}px;letter-spacing:1px;line-height:1;">{"".join(spans)}</span>'
+    return (
+        f'<span class="fpl-stars" style="font-size:{size}px;letter-spacing:1px;line-height:1;">{"".join(spans)}</span>'
+    )
 
 
 def news_banner_html(news, single_line: bool = False) -> str:
@@ -86,7 +88,7 @@ def news_banner_html(news, single_line: bool = False) -> str:
 
     truncate = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" if single_line else ""
     return f"""
-    <div title="{html.escape(text, quote=True)}" style="
+    <div class="fpl-news-pill" title="{html.escape(text, quote=True)}" style="
         {truncate}
         display:inline-block;
         box-sizing:border-box;

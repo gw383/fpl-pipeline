@@ -90,8 +90,9 @@ st.dataframe(
     width="stretch",
     height=min(38 + 35 * len(table), 720),
     column_config={
-        "position_rank": st.column_config.NumberColumn("#", width="small"),
-        "player": st.column_config.TextColumn("Player", width=200),
+        # Rank and name stay put while the rest scrolls sideways on a phone.
+        "position_rank": st.column_config.NumberColumn("#", width="small", pinned=True),
+        "player": st.column_config.TextColumn("Player", width=170, pinned=True),
         "team_short_name": st.column_config.TextColumn("Team", width="small"),
         "price": st.column_config.NumberColumn("Price", format="£%.1fm", width="small"),
         "rating": st.column_config.ProgressColumn("Rating", min_value=0, max_value=10, format="%.1f", width=110),

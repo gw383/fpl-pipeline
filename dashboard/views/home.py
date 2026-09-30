@@ -6,10 +6,11 @@ import streamlit as st
 from best_xi import pick_best_xi
 from components.card import card
 from components.differential_card import differential_card
+from components.layout import side_by_side, two_per_row
 from components.news import news_card
 from components.pitch import best_xi_card, pitch_html
 from components.rating_list import rating_list
-from components.team_fixtures import fixture_grid_header_html, team_fixture_card
+from components.team_fixtures import fixture_grid_header_html, fixture_grid_html, team_fixture_card
 from queries.player_stats import get_in_form_differentials, get_top_rated
 from queries.team_data import get_gameweek_status, get_latest_news, get_player_season_totals, get_team_fixtures
 from theme import DIFFICULTY_COLOURS, TEXT_MUTED, card_title_html, page_header_html, section_header_html
@@ -52,7 +53,8 @@ if fixtures.empty:
 best_xi_col, news_col = st.columns([1.7, 1], gap="large")
 
 with best_xi_col, card("home-1"):
-    title_col, picker_col = st.columns([2, 1], vertical_alignment="center")
+    with side_by_side("best-xi-header"):
+        title_col, picker_col = st.columns([2, 1], vertical_alignment="center")
     with picker_col:
         metric_label = st.selectbox("Build team by", list(BEST_XI_METRICS), label_visibility="collapsed")
     formation, best_xi = pick_best_xi(get_player_season_totals(), BEST_XI_METRICS[metric_label])
@@ -65,7 +67,7 @@ with best_xi_col, card("home-1"):
 with news_col, card("home-2"):
     st.html(card_title_html("Latest news", "Injuries, suspensions and availability"))
     news = get_latest_news(limit=15)
-    with st.container(height=548, border=False):
+    with st.container(height=548, border=False, key="news-feed"):
         if news.empty:
             st.caption("No news items right now.")
         for _, row in news.iterrows():
@@ -106,9 +108,10 @@ with card("home-3"):
                 dict(tuple(team_fixtures.groupby("gw"))),
                 next_5_gws,
                 first.get("team_badge_file"),
+                first.get("team_short_name"),
             )
         )
-    st.html("".join(rows))
+    st.html(fixture_grid_html("".join(rows)))
 
 # ---------------------------------------------------------------------------
 # Top rated players
@@ -125,9 +128,10 @@ top_rated = get_top_rated(per_position=5)
 if top_rated.empty:
     st.caption("No ratings available right now.")
 else:
-    for col, (position_id, label) in zip(st.columns(4, gap="medium"), POSITION_SECTIONS):
-        with col:
-            rating_list(top_rated[top_rated["p_position"] == position_id], label, position_id)
+    with two_per_row("top-rated"):
+        for col, (position_id, label) in zip(st.columns(4, gap="medium"), POSITION_SECTIONS):
+            with col:
+                rating_list(top_rated[top_rated["p_position"] == position_id], label, position_id)
 
 # ---------------------------------------------------------------------------
 # Differentials
@@ -144,7 +148,8 @@ differentials = get_in_form_differentials(limit=12)
 if differentials.empty:
     st.caption("No differentials meet the criteria right now.")
 else:
-    cols = st.columns(4, gap="small")
+    with two_per_row("differentials"):
+        cols = st.columns(4, gap="small")
     for i, (_, row) in enumerate(differentials.iterrows()):
         with cols[i % 4]:
             st.html(differential_card(row))

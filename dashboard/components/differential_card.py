@@ -24,7 +24,7 @@ def differential_card(row) -> str:
     xpts = float(row["xpts_horizon"]) if row["xpts_horizon"] is not None else 0.0
 
     return f"""
-    <div style="
+    <div class="fpl-diff" style="
         background:{SURFACE};
         border:1px solid {BORDER};
         border-left:3px solid {accent};
@@ -36,7 +36,7 @@ def differential_card(row) -> str:
         box-shadow:{SHADOW_CARD};
     ">
 
-        <div style="
+        <div class="fpl-diff-name" style="
             font-size:13px;
             font-weight:700;
             color:{TEXT_PRIMARY};
@@ -51,13 +51,13 @@ def differential_card(row) -> str:
             {position_label} &middot; &pound;{price}m
         </div>
 
-        <div style="
+        <div class="fpl-diff-foot" style="
             display:flex;
             justify-content:space-between;
             align-items:center;
             margin-top:8px;
         ">
-            <div style="font-size:11px;color:{TEXT_MUTED};">
+            <div class="fpl-diff-owned" style="font-size:11px;color:{TEXT_MUTED};">
                 {ownership:.1f}% owned
             </div>
             <div style="
