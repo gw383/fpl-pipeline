@@ -6,6 +6,7 @@ import streamlit as st
 from components.banner import banner_stars_html, club_banner_html
 from components.card import card
 from components.fixture_card import fixture_card
+from components.layout import side_by_side
 from components.metric_card import metric_row
 from components.rating_breakdown import rating_breakdown_html
 from formatting import news_banner_html, per_90
@@ -30,8 +31,10 @@ if players.empty:
 names = dict(zip(players["p_id"], players["p_full_name"], strict=False))
 ids = list(names)
 
-# Each player's selector sits directly above their card.
-left, right = st.columns(2, gap="large")
+# Each player's selector sits directly above their card. The two columns stay
+# side by side on phones too, scaled down (see components.layout).
+with side_by_side("compare"):
+    left, right = st.columns(2, gap="large")
 with left:
     player_a = st.selectbox("Player A", ids, index=0, format_func=names.get, key="compare_player_a")
 with right:
@@ -75,10 +78,10 @@ def render_player_column(player_id: int, side: str, data: dict, banner_height: i
     st.html(
         club_banner_html(
             f"""
-            <div style="font-size:24px;font-weight:800;line-height:1.15;letter-spacing:-0.01em;
+            <div class="fpl-banner-title" style="font-size:24px;font-weight:800;line-height:1.15;letter-spacing:-0.01em;
                         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{player_name}</div>
             <div style="margin-top:4px;">{banner_stars_html(star, info_row["primary_colour"], size=16)}</div>
-            <div style="margin-top:4px;font-size:14px;font-weight:500;opacity:0.9;
+            <div class="fpl-banner-meta" style="margin-top:4px;font-size:14px;font-weight:500;opacity:0.9;
                         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                 {info_row["team"]} &middot; {info_row["position"]} &middot; £{info_row["price"]}m
             </div>
@@ -89,6 +92,7 @@ def render_player_column(player_id: int, side: str, data: dict, banner_height: i
             info_row["badge_file"],
             size="compact",
             min_height=banner_height,
+            tall=banner_height == BANNER_HEIGHT_WITH_NEWS,
         )
     )
 
@@ -115,7 +119,7 @@ def render_player_column(player_id: int, side: str, data: dict, banner_height: i
         ]
 
     # Three cards per row so they fit a half-width column.
-    metric_row(cards, rank_hint=f"Rank among {info_row['position'].lower()}s", per_row=3)
+    metric_row(cards, rank_hint=f"Rank among {info_row['position'].lower()}s", per_row=3, key=side)
 
     st.html(section_header_html("Upcoming fixtures"))
     with card(f"compare-{side}-fixtures"):

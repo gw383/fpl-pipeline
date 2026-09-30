@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Dashboard works on phones.** Fixture difficulty on Home fits a phone screen (badge and short name, tighter cells). Compare keeps the two players side by side at any width, scaled down. Stat cards wrap two per row instead of one, as do the differentials and top-rated lists. A player's next five gameweeks stay in one row. The pitch, bench, club banners, Team page results and news list size themselves to the space they get. Rankings keeps the rank and player columns pinned while the table scrolls sideways. Custom HTML adapts through CSS container queries on each `st.html` block. Columns that shouldn't stack one per row on phones go in the new containers in `components/layout.py`.
+
 ## 1.0.0 — 2026-09-28
 
 Portfolio release: a full review and clean-up of the project.

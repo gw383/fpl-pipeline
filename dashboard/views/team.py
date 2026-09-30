@@ -43,9 +43,9 @@ table_position = int(profile_row["team_table_position"])
 st.html(
     club_banner_html(
         f"""
-        <div style="font-size:34px;font-weight:800;line-height:1.05;letter-spacing:-0.02em;
+        <div class="fpl-banner-title" style="font-size:34px;font-weight:800;line-height:1.05;letter-spacing:-0.02em;
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{profile_row["team_name"]}</div>
-        <div style="margin-top:6px;font-size:17px;font-weight:500;opacity:0.9;">
+        <div class="fpl-banner-meta" style="margin-top:6px;font-size:17px;font-weight:500;opacity:0.9;">
             {table_position}{ordinal(table_position)} in the Premier League
         </div>
         """,
