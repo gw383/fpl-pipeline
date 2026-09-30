@@ -56,7 +56,7 @@ flowchart LR
 
 See [docs/data_model.md](docs/data_model.md) for the lineage and schema diagrams.
 
-**3. Projection model** ([`projections/`](projections)) predicts every player's FPL points for each fixture in the next five gameweeks and writes `player_rating`, `player_projection` and `team_rating` back to the warehouse. The model is pure pandas/NumPy with unit tests, and the same code powers a point-in-time **backtest** (`python projections/backtest.py`). See the [methodology](docs/rating_methodology.md).
+**3. Projection model** ([`projections/`](projections)) predicts every player's FPL points for each fixture in the next five gameweeks and writes `player_rating`, `player_projection` and `team_rating` back to the warehouse, plus `player_gameweek_expected` (what it expected from each player in every gameweek already under way, for expected-vs-actual on the team sheet). The model is pure pandas/NumPy with unit tests, and the same code powers a point-in-time **backtest** (`python projections/backtest.py`). See the [methodology](docs/rating_methodology.md).
 
 **4. Orchestration** ([`airflow/`](airflow)) runs the daily DAG `ingest → dbt deps → dbt build → project` in Docker; `dbt build` interleaves tests with models so bad data stops downstream builds. The containers reach the host's SQL Server via `host.docker.internal`.
 
@@ -122,12 +122,36 @@ cd ..
 python projections/run.py     # expected points -> analytics.player_rating
 ```
 
+Or all three steps in one go (extract, dbt, model), which is also what the scheduled cloud job runs:
+
+```bash
+python run_pipeline.py
+```
+
 ### 4. Run the dashboard
 
 ```bash
 cd dashboard
 streamlit run app.py
 ```
+
+### 5. Plan transfers (optional)
+
+[`projections/plan.py`](projections/plan.py) uses the same projections to pick a squad. It prints the plan and writes nothing to the warehouse:
+
+```bash
+# Wildcard / new team: best 15 over the next 8 gameweeks, on your own budget
+python projections/plan.py wildcard --manager <your FPL ID> --horizon 8
+
+# Week to week: best use of your free transfer(s) over the next 4 gameweeks
+python projections/plan.py transfers --manager <your FPL ID> --free-transfers 1
+```
+
+Later gameweeks are discounted (`--discount`, default 0.9 for a wildcard, 0.85 for transfers). `--assume-fit` treats flagged players as fit, `--exclude` rules players out, and `--csv` saves the squad. The squad is chosen with an integer programme (SciPy): 2/5/5/3, at most three per club, within budget, and the best eleven and captain every week.
+
+### Hosting it as a website
+
+The dashboard can run on Streamlit Community Cloud with an Azure SQL database, refreshed daily by GitHub Actions, all on free tiers. [docs/deployment.md](docs/deployment.md) walks through it step by step.
 
 ### Orchestrating with Airflow (optional)
 
@@ -145,6 +169,9 @@ Open http://localhost:8080 and trigger `fpl_pipeline`, or use the desktop launch
 |---|---|---|
 | `FPL_DB_SERVER` / `FPL_DB_NAME` | `localhost` / `FPL` | Database location |
 | `FPL_DB_USER` / `FPL_DB_PASSWORD` | *(empty)* | SQL login; leave the user empty for Windows authentication |
+| `FPL_DB_PORT` | `1433` | Database port |
+| `FPL_DB_DRIVER` | `odbc` | `odbc` (Microsoft ODBC Driver 18) or `pymssql` (no ODBC driver; used by the hosted dashboard) |
+| `FPL_DB_TRUST_CERT` | `yes` | Accept the server's certificate unchecked (a local self-signed one); `no` for Azure SQL |
 | `FPL_SEASON` | `2026-27` | Season label on raw rows — must exist in `seeds/seasons.csv` |
 | `FPL_ENTRY_IDS` | `146897,194625` | FPL managers always ingested (managers looked up on the dashboard are added automatically) |
 | `FPL_MY_ENTRY_ID` | `194625` | Manager the My Team page opens on |
@@ -171,7 +198,6 @@ cd transformation && dbt test   # data tests against the warehouse
 
 ## Future improvements
 
-- Cloud-hosted database and scheduled deployment
 - Team-level history (last season's team xG) as a prior for team ratings, alongside squad prices
 - Snapshotting player news so historical absences can be explained
 - Alerting on failed runs and data-freshness checks

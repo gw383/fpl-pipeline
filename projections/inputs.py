@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -105,6 +105,35 @@ def load_inputs(engine: Engine | None = None) -> ModelInputs:
     for column in ("p_chance_of_playing", "p_penalties_order", "p_price", "p_start_price"):
         players[column] = pd.to_numeric(players[column], errors="coerce")
     return ModelInputs(**frames)
+
+
+EXPECTED_TABLE = "player_gameweek_expected"
+
+
+def load_expected_gameweeks(engine: Engine | None = None) -> set[int]:
+    """Gameweeks already in analytics.player_gameweek_expected."""
+    engine = engine or get_engine()
+    with engine.connect() as conn:
+        if not inspect(conn).has_table(EXPECTED_TABLE, schema=SCHEMA):
+            return set()
+        rows = conn.execute(text(f"select distinct gw from {SCHEMA}.{EXPECTED_TABLE}"))
+        return {int(row[0]) for row in rows}
+
+
+def write_gameweek_expectations(frame: pd.DataFrame, engine: Engine | None = None) -> None:
+    """Replace these gameweeks' rows in analytics.player_gameweek_expected
+    (created on first use), in one transaction."""
+    if frame.empty:
+        return
+    engine = engine or get_engine()
+    gameweeks = sorted({int(gw) for gw in frame["gw"]})
+    with engine.begin() as conn:
+        if inspect(conn).has_table(EXPECTED_TABLE, schema=SCHEMA):
+            conn.execute(
+                text(f"delete from {SCHEMA}.{EXPECTED_TABLE} where gw in ({', '.join(str(gw) for gw in gameweeks)})")
+            )
+        frame.to_sql(EXPECTED_TABLE, conn, schema=SCHEMA, index=False, if_exists="append", chunksize=1000)
+    logger.info("Wrote expected points for gameweek(s) %s", gameweeks)
 
 
 def _replace_table(conn, df: pd.DataFrame, table: str) -> None:

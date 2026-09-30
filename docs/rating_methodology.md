@@ -1,12 +1,13 @@
 # Player rating methodology
 
-Every player's rating comes from a **projection model** that predicts how many FPL points he will score in each of the next five gameweeks. The model lives in [`projections/model.py`](../projections/model.py), runs after `dbt build` (`python projections/run.py`), and writes three tables:
+Every player's rating comes from a **projection model** that predicts how many FPL points he will score in each of the next five gameweeks. The model lives in [`projections/model.py`](../projections/model.py), runs after `dbt build` (`python projections/run.py`), and writes four tables:
 
 | Table | Grain | What's in it |
 |---|---|---|
 | `analytics.player_projection` | player × upcoming fixture | expected minutes, open-play xG, xA, expected penalties, clean-sheet chance and expected points by category |
 | `analytics.player_rating` | player | expected points next gameweek and over the horizon, split by category; the 0–10 star rating |
 | `analytics.team_rating` | team | attack, defence and defensive-actions-allowed multipliers |
+| `analytics.player_gameweek_expected` | player × started gameweek | what the model expected from him in that gameweek, predicted only from earlier data (no availability flags) — shown next to actual points on My Team |
 
 ## From a score to a prediction
 

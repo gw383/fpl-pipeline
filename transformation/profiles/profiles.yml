@@ -1,0 +1,21 @@
+# dbt profile driven by the same FPL_DB_* environment variables as the rest
+# of the pipeline, for a SQL login (Azure SQL, or any SQL Server with SQL
+# authentication). run_pipeline.py uses it automatically when FPL_DB_USER is
+# set; with Windows authentication it leaves your own ~/.dbt/profiles.yml in
+# charge. To use it by hand: DBT_PROFILES_DIR=profiles dbt build
+fpl_pipeline:
+  target: env
+  outputs:
+    env:
+      type: sqlserver
+      driver: "ODBC Driver 18 for SQL Server"
+      server: "{{ env_var('FPL_DB_SERVER') }}"
+      port: "{{ env_var('FPL_DB_PORT', '1433') | as_number }}"
+      database: "{{ env_var('FPL_DB_NAME', 'FPL') }}"
+      schema: raw
+      user: "{{ env_var('FPL_DB_USER') }}"
+      password: "{{ env_var('FPL_DB_PASSWORD') }}"
+      encrypt: true
+      trust_cert: "{{ (env_var('FPL_DB_TRUST_CERT', 'yes') | lower in ['yes', 'true', '1']) | string | as_bool }}"
+      login_timeout: 60
+      threads: 4

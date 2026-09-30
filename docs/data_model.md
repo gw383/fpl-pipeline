@@ -33,7 +33,7 @@ flowchart LR
     players --> player_past_seasons
 
     players & player_stats & player_penalties & player_past_seasons & fixtures & gameweeks --> model{{"projections/run.py<br/>(Python model)"}}
-    model --> player_rating & player_projection & team_rating
+    model --> player_rating & player_projection & team_rating & player_gameweek_expected
 
     stg --> managers[manager_profile / gameweek_history / transfers]
     players --> manager_squad
@@ -63,6 +63,7 @@ erDiagram
   player_stats ||--|| player_points : "pg_id, pg_gameweek"
   players ||--o{ player_penalties : "p_id"
   players ||--o{ player_past_seasons : "p_id"
+  players ||--o{ player_gameweek_expected : "p_id"
   teams ||--o{ team_gameweek_stats : "team_id"
   teams ||--o{ team_fixture_results : "team_id"
   fixtures ||--|{ team_fixture_results : "f_id (one row per side)"
@@ -203,6 +204,12 @@ erDiagram
     float cs_prob
     float xpts
   }
+  player_gameweek_expected {
+    int p_id PK,FK
+    int gw PK
+    float xpts
+    float xmins
+  }
   team_rating {
     int team_id PK,FK
     float attack_index
@@ -237,4 +244,4 @@ erDiagram
   }
 ```
 
-`player_rating`, `player_projection` and `team_rating` are written by the Python projection model after `dbt build` (see [rating_methodology.md](rating_methodology.md)); it validates its output before replacing all three tables in one transaction. Every dbt model is documented and tested in [`_staging.yml`](../transformation/models/staging/_staging.yml) and [`_analytics.yml`](../transformation/models/analytics/_analytics.yml) (primary-key uniqueness/not-null, relationships and accepted values); `dbt docs generate && dbt docs serve` renders the full catalogue.
+`player_rating`, `player_projection`, `team_rating` and `player_gameweek_expected` are written by the Python projection model after `dbt build` (see [rating_methodology.md](rating_methodology.md)); it validates its output before replacing the first three in one transaction, and adds each started gameweek's expected points to the fourth. Every dbt model is documented and tested in [`_staging.yml`](../transformation/models/staging/_staging.yml) and [`_analytics.yml`](../transformation/models/analytics/_analytics.yml) (primary-key uniqueness/not-null, relationships and accepted values); `dbt docs generate && dbt docs serve` renders the full catalogue.

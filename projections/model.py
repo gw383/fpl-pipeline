@@ -186,6 +186,11 @@ class ModelConfig:
     # because past flags aren't stored).
     use_availability: bool = True
 
+    # Players to treat as fully fit whatever FPL's flag says (e.g. you know
+    # he'll be back): available for every fixture, and gameweeks missed since
+    # his last appearance don't count against his chance of starting.
+    fit_players: frozenset[int] = frozenset()
+
     def with_overrides(self, **kwargs) -> ModelConfig:
         return replace(self, **kwargs)
 
@@ -854,6 +859,12 @@ def minutes_model(inputs: ModelInputs, as_of_gw: int, cfg: ModelConfig) -> pd.Da
     grid = grid.merge(history, left_on=["p_id", "gw"], right_on=["pg_id", "pg_gameweek"], how="left")
     grid = grid[grid["gw"] >= grid["p_id"].map(_counting_from(history)).fillna(np.inf)]
     grid[["pg_minutes", "pg_starts"]] = grid[["pg_minutes", "pg_starts"]].fillna(0.0)
+    if cfg.fit_players:
+        # A player assumed fit: the games he's missed since his last
+        # appearance were absences, not selection decisions.
+        last_played = grid[grid["pg_minutes"] > 0].groupby("p_id")["gw"].max()
+        after_last = grid["gw"] > grid["p_id"].map(last_played)
+        grid = grid[~(grid["p_id"].isin(cfg.fit_players) & after_last.fillna(False))]
     grid["w"] = cfg.minutes_decay ** (as_of_gw - 1 - grid["gw"])
 
     starts = grid["pg_starts"].clip(upper=grid["n_matches"])
@@ -938,6 +949,7 @@ def availability(players: pd.DataFrame, horizon: pd.DataFrame, cfg: ModelConfig)
         np.where(return_date.notna(), np.where(deadline < return_date, 0.0, 1.0), recovered),
     )
     value = np.select([status.isin(["u", "n"]), status == "a"], [0.0, 1.0], default=flagged)
+    value = np.where(grid["p_id"].isin(cfg.fit_players), 1.0, value)
     return grid.assign(availability=value)[["p_id", "gw", "availability"]]
 
 

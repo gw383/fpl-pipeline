@@ -38,20 +38,60 @@ def get_manager_profile(entry_id: int) -> pd.DataFrame:
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
 def get_manager_squad(entry_id: int) -> pd.DataFrame:
     """The manager's latest 15-man squad in squad-slot order (1-11 starting,
-    12-15 bench in substitution order)."""
+    12-15 bench in substitution order), with each player's points in that
+    gameweek so far and whether his team has kicked off yet (gw_fixtures /
+    gw_kicked_off: his club's fixtures that gameweek, and how many have
+    started)."""
     return run_query(
         """
         select ms.gw_id, ms.squad_position, ms.is_starting, ms.is_captain, ms.is_vice_captain,
                ms.multiplier, ms.p_id, ms.player, ms.web_name, ms.p_position, ms.team_short_name,
-               pr.star, pr.xpts_next_gw, t.team_primary_colour, t.team_secondary_colour
+               pr.star, pr.xpts_next_gw, t.team_primary_colour, t.team_secondary_colour,
+               ps.pg_points as gw_points, fx.fixtures as gw_fixtures, fx.kicked_off as gw_kicked_off
         from analytics.manager_squad ms
         left join analytics.teams t on t.team_id = ms.team_id
         left join analytics.player_rating pr on pr.p_id = ms.p_id
+        left join analytics.player_stats ps on ps.pg_id = ms.p_id and ps.pg_gameweek = ms.gw_id
+        left join (
+            select team_id, gw, count(*) as fixtures, sum(kicked_off) as kicked_off
+            from (
+                select f_home_team as team_id, f_gameweek as gw,
+                       case when f_home_score is not null then 1 else 0 end as kicked_off
+                from analytics.fixtures
+                union all
+                select f_away_team, f_gameweek,
+                       case when f_home_score is not null then 1 else 0 end
+                from analytics.fixtures
+            ) sides
+            group by team_id, gw
+        ) fx on fx.team_id = ms.team_id and fx.gw = ms.gw_id
         where ms.m_id = :entry_id
         order by ms.squad_position
         """,
         {"entry_id": entry_id},
     )
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS)
+def get_gameweek_expected(gw: int) -> pd.DataFrame:
+    """What the projection model expected from every player in ``gw``
+    (predicted before it; written by projections/run.py). Empty until the
+    model has run with that table."""
+    exists = run_query(
+        """
+        select count(*) as n from information_schema.tables
+        where table_schema = 'analytics' and table_name = 'player_gameweek_expected'
+        """
+    )
+    if exists.empty or not int(exists["n"].iloc[0]):
+        return pd.DataFrame({"p_id": pd.Series(dtype="int64"), "gw_xpts": pd.Series(dtype="float64")})
+    expected = run_query(
+        "select p_id, xpts as gw_xpts from analytics.player_gameweek_expected where gw = :gw",
+        {"gw": gw},
+    )
+    if expected.empty:
+        return pd.DataFrame({"p_id": pd.Series(dtype="int64"), "gw_xpts": pd.Series(dtype="float64")})
+    return expected.astype({"p_id": "int64", "gw_xpts": "float64"})
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS)

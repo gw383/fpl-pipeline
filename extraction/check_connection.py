@@ -8,14 +8,17 @@ from __future__ import annotations
 
 from sqlalchemy import text
 
-from db import build_connection_string, get_engine
+from db import DbSettings, get_engine, wait_until_ready
 
 
 def check_connection() -> None:
     """Open a connection, run ``SELECT @@VERSION`` and print the result."""
-    safe = ";".join(part for part in build_connection_string().split(";") if not part.upper().startswith("PWD="))
-    print(f"Connecting with: {safe}")
-    with get_engine().connect() as conn:
+    s = DbSettings.from_env()
+    login = s.user or "Windows authentication"
+    print(f"Connecting to {s.server} / {s.database} as {login} (driver: {s.driver})")
+    engine = get_engine(s)
+    wait_until_ready(engine)
+    with engine.connect() as conn:
         version = conn.execute(text("SELECT @@VERSION")).scalar_one()
     print("Connected OK.")
     print(version.splitlines()[0])
