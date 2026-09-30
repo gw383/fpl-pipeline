@@ -11,7 +11,7 @@ authors = [{ name = "George Williams" }]
 # extraction/, projections/ and dashboard/ are run as script directories,
 # not installed packages, so tests import their modules the same way the
 # apps do.
-pythonpath = ["extraction", "projections", "dashboard"]
+pythonpath = [".", "extraction", "projections", "dashboard"]
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -31,6 +31,6 @@ known-first-party = [
     "bootstrap_static", "check_connection", "common", "config", "db", "event_live", "fixtures", "ingest", "managers",
     "pl_events", "player_history",
     "backtest", "inputs", "league", "model", "plan", "run",
-    "best_xi", "charts", "manager_loader", "components", "database", "formatting", "queries", "settings",
+    "best_xi", "charts", "manager_loader", "runtime_env", "run_pipeline", "components", "database", "formatting", "queries", "settings",
     "theme",
 ]

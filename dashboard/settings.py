@@ -7,6 +7,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+import runtime_env  # noqa: F401  -- Streamlit secrets -> environment (hosted app)
+
 load_dotenv()
 
 ASSETS_DIR = Path(__file__).parent / "assets"

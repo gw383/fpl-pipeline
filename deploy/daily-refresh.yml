@@ -1,0 +1,50 @@
+# Scheduled pipeline run for the hosted dashboard: extract -> dbt -> model,
+# against the cloud database, every morning (and on demand from the
+# Actions tab). Copy this file to .github/workflows/daily-refresh.yml.
+#
+# Needs these repository secrets (Settings -> Secrets and variables ->
+# Actions): FPL_DB_SERVER, FPL_DB_NAME, FPL_DB_USER, FPL_DB_PASSWORD.
+name: Daily refresh
+
+on:
+  schedule:
+    - cron: "15 6 * * *" # 06:15 UTC every day
+  workflow_dispatch:
+
+concurrency:
+  group: daily-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FPL_DB_SERVER: ${{ secrets.FPL_DB_SERVER }}
+      FPL_DB_NAME: ${{ secrets.FPL_DB_NAME }}
+      FPL_DB_USER: ${{ secrets.FPL_DB_USER }}
+      FPL_DB_PASSWORD: ${{ secrets.FPL_DB_PASSWORD }}
+      FPL_DB_TRUST_CERT: "no"
+      FPL_ENTRY_IDS: ${{ vars.FPL_ENTRY_IDS || '194625' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Microsoft ODBC Driver 18
+        run: |
+          if ! (command -v odbcinst >/dev/null && odbcinst -q -d | grep -q "ODBC Driver 18"); then
+            curl -sSL -O "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+            sudo dpkg -i packages-microsoft-prod.deb
+            sudo apt-get update
+            sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+          fi
+
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+
+      - name: Run the pipeline
+        run: python run_pipeline.py
