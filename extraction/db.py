@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.pool import NullPool
 
 load_dotenv()
 
@@ -95,16 +96,20 @@ def build_url(settings: DbSettings | None = None) -> str:
     return f"mssql+pyodbc:///?odbc_connect={quote_plus(build_connection_string(s))}"
 
 
-def get_engine(settings: DbSettings | None = None) -> Engine:
+def get_engine(settings: DbSettings | None = None, pooled: bool = True) -> Engine:
     """A SQLAlchemy engine for the FPL database.
 
     ``pool_pre_ping`` quietly replaces connections dropped while the
     database was idle (an Azure SQL free-tier database pauses itself). With
     pyodbc, ``fast_executemany`` sends each ``DataFrame.to_sql`` batch as a
     single round trip instead of one INSERT per row.
+
+    ``pooled=False`` closes each connection as soon as it's released. A
+    long-running process (the dashboard) should use that: an open connection
+    counts as activity, so a pool would stop a serverless database pausing.
     """
     s = settings or DbSettings.from_env()
-    kwargs: dict = {"pool_pre_ping": True}
+    kwargs: dict = {"pool_pre_ping": True} if pooled else {"poolclass": NullPool}
     if s.driver == "odbc":
         kwargs["fast_executemany"] = True
     else:

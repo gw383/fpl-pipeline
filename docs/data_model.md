@@ -8,6 +8,8 @@ The warehouse has three schemas in SQL Server:
 | `stg` | dbt (views) | Current season only, renamed and typed |
 | `analytics` | dbt (tables; the `manager_*` models are views so managers loaded on demand by the dashboard appear immediately) + `projections/run.py` | Dimensional model consumed by the dashboard, plus the projection model's output (`player_rating`, `player_projection`, `team_rating`) |
 
+The dashboard doesn't query the warehouse directly. After each run, `serving/export_data.py` copies the `analytics` tables it reads into one SQLite file (the list is `TABLES` in `serving/data_file.py`), attached in the dashboard under the same `analytics` name. Column names are lower-cased and timestamps stored as UTC text; otherwise the tables are identical.
+
 ## Lineage
 
 ```mermaid
@@ -39,7 +41,8 @@ flowchart LR
     players --> manager_squad
     teams --> manager_squad
 
-    player_rating & player_projection & team_fixture_results & managers & manager_squad --> dash([Streamlit dashboard])
+    player_rating & player_gameweek_expected & team_fixture_results & managers & manager_squad --> file[("data file<br/>(serving/export_data.py)")]
+    file --> dash([Streamlit dashboard])
 ```
 
 

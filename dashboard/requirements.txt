@@ -1,5 +1,7 @@
 # Dependencies for the hosted dashboard (Streamlit Community Cloud reads the
-# requirements file next to the app first). pymssql talks to SQL Server /
+# requirements file next to the app first). The pages read a SQLite data
+# file (standard library). SQLAlchemy and pymssql are for the My Team page's
+# lookups of new managers in the warehouse: pymssql talks to SQL Server /
 # Azure SQL without Microsoft's ODBC driver, which the host can't install;
 # set FPL_DB_DRIVER = "pymssql" in the app's secrets. The pipeline and local
 # development use the full requirements.txt in the project root.

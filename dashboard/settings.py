@@ -22,8 +22,12 @@ ICON = ASSETS_DIR / "icon.png"
 # warehouse yet.
 MY_ENTRY_ID = int(os.getenv("FPL_MY_ENTRY_ID", "194625"))
 
-# How long query results are cached (seconds).
+# How long query results are cached (seconds). They're also dropped as soon
+# as a new data file is picked up.
 CACHE_TTL_SECONDS = 600
+
+# How often to check whether the pipeline has produced a new data file.
+DATA_REFRESH_SECONDS = 900
 
 PAGE_TITLE = "FPL Analytics"
 REPO_URL = "https://github.com/gw383/fpl-pipeline"
