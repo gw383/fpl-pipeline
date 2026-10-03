@@ -2,7 +2,7 @@
 
 import pytest
 
-from run_pipeline import ROOT, dbt_environment
+from run_pipeline import ROOT, dbt_environment, export_command
 
 
 def test_sql_login_uses_the_projects_env_driven_profile():
@@ -13,6 +13,12 @@ def test_sql_login_uses_the_projects_env_driven_profile():
 def test_windows_auth_and_explicit_profiles_dir_are_left_alone():
     assert "DBT_PROFILES_DIR" not in dbt_environment({})
     assert dbt_environment({"FPL_DB_USER": "u", "DBT_PROFILES_DIR": "/mine"})["DBT_PROFILES_DIR"] == "/mine"
+
+
+def test_data_file_step_publishes_only_when_asked():
+    assert export_command("python", publish=False) == ["python", "serving/export_data.py"]
+    assert export_command("python", publish=True) == ["python", "serving/export_data.py", "--publish"]
+    assert (ROOT / "serving" / "export_data.py").is_file()
 
 
 def test_env_profile_renders():

@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from database import run_query
+from queries.common import UPCOMING_GAMEWEEKS_SQL
 from settings import CACHE_TTL_SECONDS
 
 
@@ -51,12 +52,13 @@ def get_next_5(player_id: int) -> pd.DataFrame:
     fixture, two for a double gameweek, and a row with no opponent for a
     blank gameweek."""
     return run_query(
-        """
+        f"""
         with next5 as (
-            select top (5) gw_id
+            select gw_id
             from analytics.gameweeks
-            where gw_deadline_time > getdate()
+            where {UPCOMING_GAMEWEEKS_SQL}
             order by gw_id
+            limit 5
         ),
 
         player_team as (

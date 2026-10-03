@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from database import run_query
+from queries.common import PLAYED_GAMEWEEKS_SQL, UPCOMING_GAMEWEEKS_SQL
 from settings import CACHE_TTL_SECONDS
 
 
@@ -13,7 +14,7 @@ from settings import CACHE_TTL_SECONDS
 def get_team_fixtures() -> pd.DataFrame:
     """Every team's upcoming fixtures (home and away) with FPL difficulty."""
     return run_query(
-        """
+        f"""
         with team_fixtures as (
             select f_home_team as team_id, f_away_team as opponent_id, f_gameweek as gw,
                    'H' as venue, f_home_diff as difficulty
@@ -38,7 +39,7 @@ def get_team_fixtures() -> pd.DataFrame:
         inner join analytics.teams t on t.team_id = tf.team_id
         left join analytics.teams opp on opp.team_id = tf.opponent_id
         inner join analytics.gameweeks gw on gw.gw_id = tf.gw
-        where gw.gw_deadline_time > getdate()
+        where gw.{UPCOMING_GAMEWEEKS_SQL}
         order by tf.team_id, tf.gw
         """
     )
@@ -48,12 +49,11 @@ def get_team_fixtures() -> pd.DataFrame:
 def get_gameweek_status() -> dict:
     """The latest gameweek whose deadline has passed and the next deadline."""
     df = run_query(
-        """
+        f"""
         select
-            (select max(gw_id) from analytics.gameweeks where gw_deadline_time < getdate())  as current_gw,
-            (select min(gw_id) from analytics.gameweeks where gw_deadline_time >= getdate()) as next_gw,
-            (select min(gw_deadline_time) from analytics.gameweeks
-              where gw_deadline_time >= getdate())                                           as next_deadline
+            (select max(gw_id) from analytics.gameweeks where {PLAYED_GAMEWEEKS_SQL})             as current_gw,
+            (select min(gw_id) from analytics.gameweeks where {UPCOMING_GAMEWEEKS_SQL})           as next_gw,
+            (select min(gw_deadline_time) from analytics.gameweeks where {UPCOMING_GAMEWEEKS_SQL}) as next_deadline
         """
     )
     if df.empty:
@@ -71,7 +71,7 @@ def get_latest_news(limit: int = 10) -> pd.DataFrame:
     """The most recent player news items."""
     news = run_query(
         """
-        select top (:limit)
+        select
             p_full_name as player,
             p_news      as news,
             p_news_date as date
@@ -79,6 +79,7 @@ def get_latest_news(limit: int = 10) -> pd.DataFrame:
         where p_news_date is not null
           and p_news <> ''
         order by p_news_date desc
+        limit :limit
         """,
         {"limit": limit},
     )

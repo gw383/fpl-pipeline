@@ -1,9 +1,11 @@
 """My Team: any FPL manager's season so far, current squad on the pitch
 (with captaincy and expected points), bench and recent transfers.
 
-Enter a manager ID: if they're already in the warehouse they're shown
-straight away; otherwise they're fetched from the FPL API, saved (and kept
-up to date by the daily pipeline from then on), then shown.
+Enter a manager ID: if they're already saved they're shown straight away
+from the dashboard's data file; otherwise they're fetched from the FPL API,
+saved in the warehouse (and kept up to date by the daily pipeline from then
+on), then shown from there until the next pipeline run adds them to the
+file.
 """
 
 import pandas as pd
@@ -13,7 +15,8 @@ from components.card import card
 from components.layout import side_by_side
 from components.metric_card import metric_row
 from components.pitch import gameweek_points_html, pitch_html, shirt_svg, squad_card, team_expected_points
-from manager_loader import ManagerNotFound, load_manager, parse_manager_id
+from database import live_database_configured
+from manager_loader import ManagerNotFound, is_live, load_manager, mark_live, parse_manager_id
 from queries.manager_data import (
     get_gameweek_expected,
     get_known_managers,
@@ -99,28 +102,43 @@ entry_id = int(st.session_state["manager_id"])
 st.query_params["manager"] = str(entry_id)
 
 # ---------------------------------------------------------------------------
-# Fetch from FPL if this manager isn't in the warehouse yet
+# Saved managers come from the data file. Anyone else is looked up in the
+# warehouse (fetched from FPL first if they aren't there either).
 # ---------------------------------------------------------------------------
 
-profile = get_manager_profile(entry_id)
-if profile.empty:
+can_fetch = live_database_configured()
+live = is_live(entry_id)
+profile = get_manager_profile(entry_id, live=live)
+if profile.empty and not live:
+    if not can_fetch:
+        st.info(
+            f"Manager {entry_id} isn't one of the saved managers, and this copy of the dashboard has no database "
+            "connection to look new ones up with. Pick one of the saved managers above."
+        )
+        st.stop()
     not_found = st.session_state.setdefault("managers_not_found", set())
     if entry_id in not_found:
         st.error(f"There's no FPL manager with ID {entry_id}. Check the number and try again.")
         st.stop()
-    with st.status(f"Manager {entry_id} isn't saved yet, so fetching them from FPL...", expanded=False) as status:
+    with st.status(
+        f"Manager {entry_id} isn't saved yet, so looking them up. This can take up to a minute...", expanded=False
+    ) as status:
         try:
-            load_manager(entry_id)
+            # Looked up earlier today, by anyone: already in the warehouse.
+            if get_manager_profile(entry_id, live=True).empty:
+                load_manager(entry_id)
         except ManagerNotFound:
             not_found.add(entry_id)
             status.update(label=f"No FPL manager with ID {entry_id}", state="error")
             st.stop()
         except Exception as exc:  # network/API/database problems: show, don't crash
-            status.update(label=f"Couldn't fetch manager {entry_id} from FPL", state="error")
+            status.update(label=f"Couldn't fetch manager {entry_id} from FPL", state="error", expanded=True)
             st.error(f"Something went wrong fetching manager {entry_id}: {exc}")
             st.stop()
         status.update(label=f"Fetched and saved manager {entry_id}", state="complete")
-    profile = get_manager_profile(entry_id)
+    mark_live(entry_id)
+    live = True
+    profile = get_manager_profile(entry_id, live=True)
     if profile.empty:
         st.warning(
             f"Manager {entry_id} was saved, but the warehouse isn't showing them yet. Run `dbt build` once so "
@@ -128,9 +146,13 @@ if profile.empty:
         )
         st.stop()
 
+if profile.empty:  # refreshed earlier in this session, and the warehouse can't be read right now
+    st.warning(f"Couldn't load manager {entry_id} from the database just now. Try again in a minute.")
+    st.stop()
+
 profile_row = profile.iloc[0]
-squad = get_manager_squad(entry_id)
-history = get_manager_gameweek_history(entry_id)
+squad = get_manager_squad(entry_id, live=live)
+history = get_manager_gameweek_history(entry_id, live=live)
 latest = history.iloc[0] if not history.empty else pd.Series(dtype=object)
 current_gw = int(squad["gw_id"].iloc[0]) if not squad.empty else None
 if current_gw is not None:
@@ -147,7 +169,7 @@ title_col, refresh_col = st.columns([4, 1], vertical_alignment="bottom")
 with title_col:
     st.html(section_header_html(profile_row["m_team_name"], f"{byline}{gameweek_note}{chip_note}"))
 with refresh_col:
-    if st.button("Refresh from FPL", key="refresh_manager", width="stretch"):
+    if can_fetch and st.button("Refresh from FPL", key="refresh_manager", width="stretch"):
         refreshed = False
         try:
             with st.spinner("Refreshing from FPL..."):
@@ -234,7 +256,7 @@ with squad_col, card("my_team-1"):
 
 with transfers_col, card("my_team-2"):
     st.html(card_title_html("Recent transfers"))
-    transfers = get_manager_transfers(entry_id)
+    transfers = get_manager_transfers(entry_id, live=live)
     if transfers.empty:
         st.caption("No transfers made yet.")
     rows = "".join(

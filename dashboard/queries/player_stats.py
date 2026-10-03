@@ -63,10 +63,12 @@ RATING_COLUMNS = """
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
 def get_player_stats(player_id: int, range_label: str) -> pd.DataFrame:
     """Totals over the selected range: raw stats, underlying xG/xA/xGA, and
-    fantasy points by scoring category (pf_*, from analytics.player_points)."""
-    return run_query(
+    fantasy points by scoring category (pf_*, from analytics.player_points).
+    Empty if the player has no gameweeks in the range."""
+    totals = run_query(
         f"""
         select
+            count(*)                              as gameweeks,
             sum(ps.pg_points)                     as points,
             sum(ps.pg_minutes)                    as minutes,
             count(*) * 90 - sum(ps.pg_minutes)    as minutes_not_played,
@@ -103,10 +105,13 @@ def get_player_stats(player_id: int, range_label: str) -> pd.DataFrame:
         where ps.pg_id = :player_id
           and gw.{PLAYED_GAMEWEEKS_SQL}
           and {range_filter_sql(range_label, "ps.pg_gameweek")}
-        having count(*) > 0
         """,
         {"player_id": player_id},
     )
+    if totals.empty:
+        return totals
+    # An aggregate over no rows is still one row (of nulls).
+    return totals[totals["gameweeks"] > 0].drop(columns="gameweeks").reset_index(drop=True)
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
@@ -146,7 +151,7 @@ def get_best_stats(position_name: str, range_label: str) -> pd.DataFrame:
             max(clean_sheets)                            as max_cs,
             max(saves)                                   as max_saves,
             max(pens_saved)                              as max_pens_saved,
-            cast(round(max(dcp90), 1) as decimal(10, 1)) as max_dcp90
+            round(max(dcp90), 1)                         as max_dcp90
         from player_totals
         """,
         {"position_name": position_name},
@@ -197,7 +202,7 @@ def get_rank_metrics(player_id: int, range_label: str) -> pd.DataFrame:
                 sum(ps.pg_clean_sheets)                                    as cs,
                 sum(ps.pg_defcons) * 90.0 / nullif(sum(ps.pg_minutes), 0)  as dcp90,
                 sum(ps.pg_points) * 90.0 / nullif(sum(ps.pg_minutes), 0)   as pp90,
-                max(p.p_form)                                              as form_value
+                max(cast(p.p_form as real))                                as form_value
             from analytics.player_stats ps
             inner join analytics.players p on p.p_id = ps.pg_id
             inner join analytics.gameweeks gw on gw.gw_id = ps.pg_gameweek
@@ -297,7 +302,7 @@ def get_in_form_differentials(max_ownership: float = 10.0, limit: int = 20) -> p
     projection horizon, among those expected to play most of next week."""
     return run_query(
         """
-        select top (:limit)
+        select
             pr.p_id,
             pr.player,
             pr.p_position,
@@ -309,6 +314,7 @@ def get_in_form_differentials(max_ownership: float = 10.0, limit: int = 20) -> p
         where pl.p_ownership <= :max_ownership
           and pr.xmins_next_gw >= 60
         order by pr.xpts_horizon desc
+        limit :limit
         """,
         {"max_ownership": max_ownership, "limit": limit},
     )

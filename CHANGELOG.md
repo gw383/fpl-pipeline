@@ -2,7 +2,14 @@
 
 ## Unreleased
 
+### Added
+- **A data file for the dashboard** (`serving/`). The last step of the pipeline (`run_pipeline.py`, the Airflow DAG) exports the analytics tables the dashboard reads into one SQLite file, `serving/data/fpl_serving.sqlite`. `--publish` (or `FPL_PUBLISH_DATA=1`) pushes a gzipped copy to the repository's `data` branch, replacing it each time so the repository doesn't grow.
+- Tests for every dashboard query, run against a data file built from a made-up league (`tests/dashboard/sample_data.py`) and checked against the same answer worked out in pandas. They need Streamlit, and are skipped where it isn't installed.
+
 ### Changed
+- **The dashboard reads the data file instead of querying SQL Server.** It uses the local file when the pipeline has run here, otherwise it downloads the published one, re-checks it every 15 minutes and drops its cached results when it changes. Pages no longer wait for the warehouse (or for a paused Azure database to wake), a fresh clone can run the dashboard with no database, and the warehouse is only awake while the pipeline runs. The footer shows when the data was refreshed. The queries are now SQLite's dialect rather than T-SQL.
+- **My Team** shows saved managers from the data file. A manager who isn't in it yet is looked up in the warehouse as before (fetched from FPL first if needed) and read from there until the next pipeline run. The warehouse connection is no longer pooled, so the dashboard doesn't keep a serverless database awake. Without a database connection the page shows saved managers only.
+- Positional ranks break ties on form as a number. FPL sends form as text, so "9.8" used to rank above "10.2".
 - **Dashboard works on phones.** Fixture difficulty on Home fits a phone screen (badge and short name, tighter cells). Compare keeps the two players side by side at any width, scaled down. Stat cards wrap two per row instead of one, as do the differentials and top-rated lists. A player's next five gameweeks stay in one row. The pitch, bench, club banners, Team page results and news list size themselves to the space they get. Rankings keeps the rank and player columns pinned while the table scrolls sideways. Custom HTML adapts through CSS container queries on each `st.html` block. Columns that shouldn't stack one per row on phones go in the new containers in `components/layout.py`.
 
 ## 1.0.0 — 2026-09-28

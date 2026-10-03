@@ -13,6 +13,7 @@ I built this to work through the problems a real data pipeline has to solve — 
 - **Incremental, idempotent ingestion** — only gameweeks that are new or still being corrected by FPL are re-fetched; every partition is replaced inside a single transaction, so reruns and overlapping runs can never duplicate or lose data.
 - **Layered dbt project** — `raw → stg → analytics`, 22 models with documentation and data tests (keys, relationships, accepted values), an incremental fact table and reusable macros.
 - **An expected-points projection model** — team attack/defence ratings, opponent-adjusted open-play xG/xA rates with shrinkage, penalties modelled as a role for designated takers, priors from previous seasons and prices, and a minutes/availability model combine into predicted FPL points for every fixture. It is **backtested** against actual points and beats form-based baselines. [Methodology and results →](docs/rating_methodology.md)
+- **A serving layer for the dashboard** — after each run the pipeline exports the analytics tables the dashboard reads into one small SQLite file. The dashboard queries that file, so a page view never waits on the warehouse.
 - **Orchestrated with Airflow in Docker**, plus one-click desktop launchers.
 - **Six-page Streamlit dashboard** — player deep dives, head-to-head comparisons, team form, leaderboards and a personal FPL squad view.
 - **CI** — linting, unit tests and `dbt parse` on every push.
@@ -22,7 +23,7 @@ I built this to work through the problems a real data pipeline has to solve — 
 | Layer | Technology |
 |---|---|
 | Ingestion | Python (requests, pandas, SQLAlchemy) |
-| Storage | Microsoft SQL Server |
+| Storage | Microsoft SQL Server (warehouse), SQLite (the dashboard's data file) |
 | Transformation & testing | dbt (dbt-sqlserver, dbt_utils) |
 | Modelling | Python (pandas, NumPy): projection model and backtest |
 | Orchestration | Apache Airflow 3 on Docker Compose |
@@ -37,9 +38,10 @@ flowchart LR
     raw -->|dbt views| stg[(stg)]
     stg -->|dbt tables + tests| analytics[(analytics)]
     analytics -->|projections/run.py| proj[(player_rating<br/>player_projection)]
-    analytics --> dash([Streamlit dashboard])
-    proj --> dash
-    airflow{{"Airflow: ingest → dbt build → project"}} -. orchestrates .-> raw
+    analytics -->|serving/export_data.py| file[(data file<br/>SQLite)]
+    proj --> file
+    file --> dash([Streamlit dashboard])
+    airflow{{"Airflow: ingest → dbt build → project → export"}} -. orchestrates .-> raw
 ```
 
 **1. Extraction** ([`extraction/`](extraction)) pulls six endpoints: `bootstrap-static` (players, teams, positions, gameweeks), `fixtures`, per-gameweek live stats, and — for configured managers plus any looked up in the dashboard — profiles, gameweek picks and transfers. It also loads goal events from the Premier League's match API (premierleague.com), the only source that says which goals were penalties; player and team codes match FPL's, so the two join directly. Once a season it loads every player's previous Premier League seasons (FPL's `element-summary` history), plus the previous two seasons' goal events, for the model's history prior.
@@ -58,9 +60,11 @@ See [docs/data_model.md](docs/data_model.md) for the lineage and schema diagrams
 
 **3. Projection model** ([`projections/`](projections)) predicts every player's FPL points for each fixture in the next five gameweeks and writes `player_rating`, `player_projection` and `team_rating` back to the warehouse, plus `player_gameweek_expected` (what it expected from each player in every gameweek already under way, for expected-vs-actual on the team sheet). The model is pure pandas/NumPy with unit tests, and the same code powers a point-in-time **backtest** (`python projections/backtest.py`). See the [methodology](docs/rating_methodology.md).
 
-**4. Orchestration** ([`airflow/`](airflow)) runs the daily DAG `ingest → dbt deps → dbt build → project` in Docker; `dbt build` interleaves tests with models so bad data stops downstream builds. The containers reach the host's SQL Server via `host.docker.internal`.
+**4. Serving** ([`serving/`](serving)) is the last step of every run. `export_data.py` copies the analytics tables the dashboard reads into one SQLite file (`serving/data/fpl_serving.sqlite`), and `--publish` pushes a gzipped copy to the repository's `data` branch for the hosted dashboard to download. The data only changes when the pipeline runs, so there is no reason for a page view to query the warehouse.
 
-**5. Dashboard** ([`dashboard/`](dashboard)) is a multi-page Streamlit site with top navigation:
+**5. Orchestration** ([`airflow/`](airflow)) runs the daily DAG `ingest → dbt deps → dbt build → project → export` in Docker; `dbt build` interleaves tests with models so bad data stops downstream builds. The containers reach the host's SQL Server via `host.docker.internal`.
+
+**6. Dashboard** ([`dashboard/`](dashboard)) is a multi-page Streamlit site with top navigation. It reads the data file: the local one if the pipeline has run here, otherwise the published one (so a fresh clone can run the dashboard with no database at all). Only the My Team page touches the warehouse, to look up a manager who isn't in the file yet.
 
 | Page | What it shows |
 |---|---|
@@ -69,7 +73,7 @@ See [docs/data_model.md](docs/data_model.md) for the lineage and schema diagrams
 | Compare | Two player profiles side by side |
 | Teams | Results over a chosen range ranked against the league, form guide, scorers and xG/xA/xGA per match |
 | Rankings | Sortable, searchable expected-points table per position: next gameweek, next five, minutes, where the points come from, points per £m |
-| My Team | Any manager's squad with expected points, captaincy, bench, budget and transfers. Enter an FPL ID: saved managers load straight from the warehouse, new ones are fetched from the API, ingested and shown |
+| My Team | Any manager's squad with expected points, captaincy, bench, budget and transfers. Enter an FPL ID: saved managers load straight from the data file, new ones are fetched from the API, ingested and shown |
 
 ## Project structure
 
@@ -77,10 +81,11 @@ See [docs/data_model.md](docs/data_model.md) for the lineage and schema diagrams
 ├── extraction/          Python ingestion (one module per API area) + entry point ingest.py
 ├── transformation/      dbt project: models/{staging,analytics}, macros, seeds, analyses
 ├── projections/         Expected-points model (model.py), backtest, and run.py to write it to the warehouse
+├── serving/             Export of the dashboard's data file (export_data.py) and its publishing (publish_data.py)
 ├── airflow/             Dockerfile, docker-compose.yaml, dags/, dbt profile for the containers
 ├── dashboard/           Streamlit app: app.py (entry point), views/, queries/, components/, charts/
 ├── launchers/           Tkinter desktop launchers (+ PyInstaller specs)
-├── tests/               pytest unit tests for extraction, the projection model and dashboard logic
+├── tests/               pytest unit tests for extraction, the projection model, the data file and every dashboard query
 └── docs/                Architecture, data model and rating methodology
 ```
 
@@ -120,9 +125,10 @@ dbt deps
 dbt build
 cd ..
 python projections/run.py     # expected points -> analytics.player_rating
+python serving/export_data.py # the dashboard's data file -> serving/data/
 ```
 
-Or all three steps in one go (extract, dbt, model), which is also what the scheduled cloud job runs:
+Or all of it in one go (extract, dbt, model, data file), which is also what the scheduled cloud job runs:
 
 ```bash
 python run_pipeline.py
@@ -134,6 +140,8 @@ python run_pipeline.py
 cd dashboard
 streamlit run app.py
 ```
+
+It reads `serving/data/fpl_serving.sqlite`. If that doesn't exist (you haven't run the pipeline here), it downloads the published copy instead, so this step works on its own in a fresh clone.
 
 ### 5. Plan transfers (optional)
 
@@ -175,13 +183,17 @@ Open http://localhost:8080 and trigger `fpl_pipeline`, or use the desktop launch
 | `FPL_SEASON` | `2026-27` | Season label on raw rows — must exist in `seeds/seasons.csv` |
 | `FPL_ENTRY_IDS` | `146897,194625` | FPL managers always ingested (managers looked up on the dashboard are added automatically) |
 | `FPL_MY_ENTRY_ID` | `194625` | Manager the My Team page opens on |
+| `FPL_DATA_FILE` | *(unset)* | Data file for the dashboard to read, instead of `serving/data/fpl_serving.sqlite` |
+| `FPL_DATA_URL` | *(unset)* | Gzipped data file to download instead (defaults to this repository's `data` branch when there is no local file) |
+| `FPL_PUBLISH_DATA` | *(unset)* | `1` makes `serving/export_data.py` publish after exporting, like `--publish` |
+| `FPL_DATA_REMOTE` | *(unset)* | Git remote to publish the data file to, instead of this checkout's `origin` |
 
 At the start of a new season, add a row to `transformation/seeds/seasons.csv`, update `FPL_SEASON`, and add any promoted clubs to `seeds/team_branding.csv`.
 
 ## Testing
 
 ```bash
-pytest            # unit tests (no database needed)
+pytest            # unit tests (no database needed), including every dashboard query against a sample data file
 python projections/backtest.py   # how well the model predicted past gameweeks
 ruff check .      # lint
 cd transformation && dbt test   # data tests against the warehouse
@@ -193,7 +205,8 @@ cd transformation && dbt test   # data tests against the warehouse
 - **Idempotency under concurrency.** A delete-then-append load that isn't atomic can duplicate a partition if two runs overlap (say, the scheduled run and a manual trigger). Each partition is now replaced inside one transaction and the DAG allows only one active run.
 - **Late data corrections.** FPL can revise a finished gameweek's stats for a day or two; the ingestion grace window and the `player_points` lookback exist so those corrections are always picked up.
 - **Double gameweeks.** The live endpoint returns one combined row per player per gameweek, so double gameweeks can't be split by match; the models flag them rather than guess.
-- **On-demand ingestion.** The My Team page can pull in any manager by ID. It reuses the extraction code rather than a second copy, replaces only that manager's rows in one transaction, and the manager models are dbt *views*, so the new data appears without waiting for a dbt run. Looked-up managers are then refreshed by the daily pipeline.
+- **Serving from a file, not the warehouse.** The hosted dashboard first queried Azure SQL on every page view, from servers on another continent, against a serverless database that pauses when idle: slow at best and a minute's wait at worst. The data changes once a day, so the pipeline now exports it to a SQLite file that the dashboard downloads and queries locally. The queries stayed SQL (ported from T-SQL to SQLite and tested against a sample file), and the warehouse only has to be awake while the pipeline runs.
+- **On-demand ingestion.** The My Team page can pull in any manager by ID. It reuses the extraction code rather than a second copy, replaces only that manager's rows in one transaction, and the manager models are dbt *views*, so the new data appears in the warehouse without waiting for a dbt run. The page reads that manager from the warehouse until the next run adds them to the data file. Looked-up managers are then refreshed by the daily pipeline.
 - **Season boundaries.** "Current season" is resolved from the `seasons` seed by date, so the whole warehouse rolls over by adding one row.
 
 ## Future improvements

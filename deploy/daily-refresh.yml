@@ -1,6 +1,10 @@
-# Scheduled pipeline run for the hosted dashboard: extract -> dbt -> model,
-# against the cloud database, every morning (and on demand from the
-# Actions tab). Copy this file to .github/workflows/daily-refresh.yml.
+# Scheduled pipeline run for the hosted dashboard: extract -> dbt -> model ->
+# publish the dashboard's data file, against the cloud database, every
+# morning (and on demand from the Actions tab). Copy this file to
+# .github/workflows/daily-refresh.yml.
+#
+# The data file is pushed to this repository's "data" branch, which the
+# hosted dashboard downloads; that is what "contents: write" is for.
 #
 # Needs these repository secrets (Settings -> Secrets and variables ->
 # Actions): FPL_DB_SERVER, FPL_DB_NAME, FPL_DB_USER, FPL_DB_PASSWORD.
@@ -15,6 +19,9 @@ concurrency:
   group: daily-refresh
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -26,6 +33,7 @@ jobs:
       FPL_DB_PASSWORD: ${{ secrets.FPL_DB_PASSWORD }}
       FPL_DB_TRUST_CERT: "no"
       FPL_ENTRY_IDS: ${{ vars.FPL_ENTRY_IDS || '194625' }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -47,4 +55,4 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run the pipeline
-        run: python run_pipeline.py
+        run: python run_pipeline.py --publish

@@ -1,17 +1,27 @@
-"""My Team page data for FPL managers in the warehouse."""
+"""My Team page data for FPL managers.
+
+Managers saved by the last pipeline run are read from the dashboard's data
+file like everything else. One looked up since then is only in the
+warehouse so far, so each query here can also run there (``live=True``).
+That is why these are written in SQL both SQLite and SQL Server accept.
+"""
 
 from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
 
-from database import run_query
+from database import run_live_query, run_query, table_exists
 from settings import CACHE_TTL_SECONDS
+
+
+def _run(live: bool):
+    return run_live_query if live else run_query
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
 def get_known_managers() -> pd.DataFrame:
-    """Every manager already in the warehouse, for the quick-pick list."""
+    """Every manager in the data file, for the quick-pick list."""
     return run_query(
         """
         select m_id, m_team_name, m_player_name
@@ -22,9 +32,9 @@ def get_known_managers() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
-def get_manager_profile(entry_id: int) -> pd.DataFrame:
+def get_manager_profile(entry_id: int, live: bool = False) -> pd.DataFrame:
     """Name, team name and season-to-date standing."""
-    return run_query(
+    return _run(live)(
         """
         select m_id, m_player_name, m_team_name, m_overall_points,
                m_overall_rank, m_squad_value, m_bank, m_loaded_at
@@ -36,13 +46,13 @@ def get_manager_profile(entry_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
-def get_manager_squad(entry_id: int) -> pd.DataFrame:
+def get_manager_squad(entry_id: int, live: bool = False) -> pd.DataFrame:
     """The manager's latest 15-man squad in squad-slot order (1-11 starting,
     12-15 bench in substitution order), with each player's points in that
     gameweek so far and whether his team has kicked off yet (gw_fixtures /
     gw_kicked_off: his club's fixtures that gameweek, and how many have
     started)."""
-    return run_query(
+    return _run(live)(
         """
         select ms.gw_id, ms.squad_position, ms.is_starting, ms.is_captain, ms.is_vice_captain,
                ms.multiplier, ms.p_id, ms.player, ms.web_name, ms.p_position, ms.team_short_name,
@@ -77,27 +87,22 @@ def get_gameweek_expected(gw: int) -> pd.DataFrame:
     """What the projection model expected from every player in ``gw``
     (predicted before it; written by projections/run.py). Empty until the
     model has run with that table."""
-    exists = run_query(
-        """
-        select count(*) as n from information_schema.tables
-        where table_schema = 'analytics' and table_name = 'player_gameweek_expected'
-        """
-    )
-    if exists.empty or not int(exists["n"].iloc[0]):
-        return pd.DataFrame({"p_id": pd.Series(dtype="int64"), "gw_xpts": pd.Series(dtype="float64")})
+    empty = pd.DataFrame({"p_id": pd.Series(dtype="int64"), "gw_xpts": pd.Series(dtype="float64")})
+    if not table_exists("player_gameweek_expected"):
+        return empty
     expected = run_query(
         "select p_id, xpts as gw_xpts from analytics.player_gameweek_expected where gw = :gw",
         {"gw": gw},
     )
     if expected.empty:
-        return pd.DataFrame({"p_id": pd.Series(dtype="int64"), "gw_xpts": pd.Series(dtype="float64")})
+        return empty
     return expected.astype({"p_id": "int64", "gw_xpts": "float64"})
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
-def get_manager_gameweek_history(entry_id: int) -> pd.DataFrame:
+def get_manager_gameweek_history(entry_id: int, live: bool = False) -> pd.DataFrame:
     """Per-gameweek points, rank, budget, transfers and chips, latest first."""
-    return run_query(
+    return _run(live)(
         """
         select gw_id, gw_points, total_points, overall_rank, bank, squad_value,
                transfers_made, transfers_cost, points_on_bench, active_chip
@@ -110,16 +115,16 @@ def get_manager_gameweek_history(entry_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS)
-def get_manager_transfers(entry_id: int, limit: int = 10) -> pd.DataFrame:
+def get_manager_transfers(entry_id: int, limit: int = 10, live: bool = False) -> pd.DataFrame:
     """The manager's most recent transfers, latest first."""
-    return run_query(
+    transfers = _run(live)(
         """
-        select top (:limit)
-            gw_id, transfer_time, player_in, player_in_position,
-            player_out, player_out_position
+        select gw_id, transfer_time, player_in, player_in_position,
+               player_out, player_out_position
         from analytics.manager_transfers
         where m_id = :entry_id
         order by transfer_time desc
         """,
-        {"entry_id": entry_id, "limit": limit},
+        {"entry_id": entry_id},
     )
+    return transfers.head(limit)
