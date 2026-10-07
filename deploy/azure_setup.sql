@@ -6,8 +6,12 @@
 -- managers on demand). The pipeline itself uses the server admin login.
 -- Replace the password (at least 8 characters, mixing upper/lower case,
 -- numbers and symbols) and keep it for the Streamlit secrets.
+--
+-- The dev database (fpl_dev) needs the same: run this in it too, after its
+-- first pipeline run (python run_pipeline.py --env dev), with the SAME
+-- password, so the live and dev sites can share their database secrets.
 
-CREATE USER fpl_web WITH PASSWORD = 'CHANGE-ME-to-a-long-password-1!';
+CREATE USER fpl_web WITH PASSWORD = 'xAuFnnasuwjF33191824LLLLO!';
 ALTER ROLE db_datareader ADD MEMBER fpl_web;
 GO
 

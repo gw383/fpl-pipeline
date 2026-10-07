@@ -9,12 +9,14 @@ from __future__ import annotations
 from sqlalchemy import text
 
 from db import DbSettings, get_engine, wait_until_ready
+from environment import current
 
 
 def check_connection() -> None:
     """Open a connection, run ``SELECT @@VERSION`` and print the result."""
     s = DbSettings.from_env()
     login = s.user or "Windows authentication"
+    print(f"Environment: {current()}")
     print(f"Connecting to {s.server} / {s.database} as {login} (driver: {s.driver})")
     engine = get_engine(s)
     wait_until_ready(engine)

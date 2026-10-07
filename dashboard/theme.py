@@ -451,6 +451,18 @@ def card_title_html(title: str, subtitle: str = "") -> str:
     """
 
 
+def environment_badge_html(environment: str) -> str:
+    """A small fixed corner label for a copy of the site that isn't live."""
+    return f"""
+    <div style="position:fixed;left:12px;bottom:12px;z-index:1000;background:{ORANGE};color:#ffffff;
+                font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;
+                padding:5px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(11,11,11,0.25);
+                pointer-events:none;">
+        {environment} data
+    </div>
+    """
+
+
 def footer_html(repo_url: str, data_note: str = "") -> str:
     """Site footer with data attribution and a link to the source code."""
     return f"""

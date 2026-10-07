@@ -14,8 +14,8 @@ import streamlit as st
 
 from database import DataUnavailable, current_data
 from queries.team_data import get_gameweek_status
-from settings import ICON, LOGO, PAGE_TITLE, REPO_URL
-from theme import footer_html, inject_base_css
+from settings import ENVIRONMENT, ICON, LOGO, PAGE_TITLE, REPO_URL
+from theme import environment_badge_html, footer_html, inject_base_css
 
 st.set_page_config(page_title=PAGE_TITLE, page_icon=str(ICON), layout="wide")
 st.markdown(inject_base_css(), unsafe_allow_html=True)
@@ -25,7 +25,16 @@ try:
     data = current_data()
 except DataUnavailable as exc:
     st.error(f"The dashboard has no data to show yet. {exc}")
+    if ENVIRONMENT != "live":
+        st.info(
+            f"This is the {ENVIRONMENT} copy of the site, which has its own data. "
+            f"`python run_pipeline.py --env {ENVIRONMENT} --publish` creates and publishes it."
+        )
     st.stop()
+
+if data.environment != "live":
+    # So the test copy is never mistaken for the real site.
+    st.html(environment_badge_html(data.environment))
 
 navigation = st.navigation(
     [
@@ -44,4 +53,6 @@ gameweek = get_gameweek_status()["current_gw"]
 notes = [f"Updated to gameweek {gameweek}"] if gameweek else []
 if data.exported_at is not None:
     notes.append(f"data refreshed {data.exported_at:%d %b, %H:%M} UTC")
+if data.environment != "live":
+    notes.append(f"{data.environment} data")
 st.html(footer_html(REPO_URL, " &middot; ".join(notes)))

@@ -161,6 +161,8 @@ Later gameweeks are discounted (`--discount`, default 0.9 for a wildcard, 0.85 f
 
 The dashboard can run on Streamlit Community Cloud with an Azure SQL database, refreshed daily by GitHub Actions, all on free tiers. [docs/deployment.md](docs/deployment.md) walks through it step by step.
 
+There are two environments, live and dev. Each has its own database and its own published data file, and one setting (`FPL_ENV`) switches between them, so a change to the pipeline or the model can be run end to end and checked on a dev copy of the site before it touches what the live site shows.
+
 ### Orchestrating with Airflow (optional)
 
 ```bash
@@ -177,6 +179,8 @@ Open http://localhost:8080 and trigger `fpl_pipeline`, or use the desktop launch
 |---|---|---|
 | `FPL_DB_SERVER` / `FPL_DB_NAME` | `localhost` / `FPL` | Database location |
 | `FPL_DB_USER` / `FPL_DB_PASSWORD` | *(empty)* | SQL login; leave the user empty for Windows authentication |
+| `FPL_ENV` | `live` | `dev` switches the pipeline and dashboard to the dev database and the dev data file (`run_pipeline.py --env dev` sets it for one run) |
+| `FPL_DB_NAME_DEV` | `<FPL_DB_NAME>_dev` | Name of the dev database |
 | `FPL_DB_PORT` | `1433` | Database port |
 | `FPL_DB_DRIVER` | `odbc` | `odbc` (Microsoft ODBC Driver 18) or `pymssql` (no ODBC driver; used by the hosted dashboard) |
 | `FPL_DB_TRUST_CERT` | `yes` | Accept the server's certificate unchecked (a local self-signed one); `no` for Azure SQL |

@@ -8,14 +8,16 @@ import pandas as pd
 import pytest
 
 from data_file import FORMAT_VERSION, META_TABLE, compress, write_data_file
-from data_source import DEFAULT_URL, DataUnavailable, Downloads, configured_source, load_file
+from data_source import DataUnavailable, Downloads, configured_source, default_url, load_file
 
 URL = "https://example.test/fpl_serving.sqlite.gz"
 
 
-def _archive(tmp_path, name="source", rows=2, exported=None) -> bytes:
+def _archive(tmp_path, name="source", rows=2, exported=None, environment="live") -> bytes:
     frame = pd.DataFrame({"p_id": range(rows)})
-    path = write_data_file({"players": frame}, tmp_path / name / "data.sqlite", exported_at=exported)
+    path = write_data_file(
+        {"players": frame}, tmp_path / name / "data.sqlite", exported_at=exported, environment=environment
+    )
     return compress(path).read_bytes()
 
 
@@ -49,7 +51,7 @@ def test_source_order(tmp_path):
     assert configured_source(explicit, local) == ("file", "/data/mine.sqlite")
     assert configured_source({"FPL_DATA_URL": URL}, local) == ("url", URL)
     # Nothing set and no local export: the published file (a fresh clone, the hosted app).
-    assert configured_source({}, local) == ("url", DEFAULT_URL)
+    assert configured_source({}, local) == ("url", default_url())
     local.write_bytes(b"")
     assert configured_source({}, local) == ("file", str(local))
     # An explicit URL still wins over a local export.
@@ -57,7 +59,22 @@ def test_source_order(tmp_path):
 
 
 def test_default_url_is_the_data_branch():
-    assert DEFAULT_URL == "https://raw.githubusercontent.com/gw383/fpl-pipeline/data/fpl_serving.sqlite.gz"
+    assert default_url() == "https://raw.githubusercontent.com/gw383/fpl-pipeline/data/fpl_serving.sqlite.gz"
+    assert default_url("dev") == "https://raw.githubusercontent.com/gw383/fpl-pipeline/data-dev/fpl_serving.sqlite.gz"
+
+
+def test_dev_dashboard_reads_the_dev_copies(tmp_path, monkeypatch):
+    import data_file
+
+    monkeypatch.setattr(data_file, "DATA_DIR", tmp_path)
+    # A live export on this machine is not what the dev dashboard shows...
+    (tmp_path / "fpl_serving.sqlite").write_bytes(b"")
+    assert configured_source({"FPL_ENV": "dev"}) == ("url", default_url("dev"))
+    assert configured_source({}) == ("file", str(tmp_path / "fpl_serving.sqlite"))
+    # ...its own export is.
+    (tmp_path / "dev").mkdir()
+    (tmp_path / "dev" / "fpl_serving.sqlite").write_bytes(b"")
+    assert configured_source({"FPL_ENV": "dev"}) == ("file", str(tmp_path / "dev" / "fpl_serving.sqlite"))
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +86,7 @@ def test_local_file_reports_its_export_time_and_changes_version_when_rewritten(t
     when = dt.datetime(2026, 10, 3, 6, 20, tzinfo=dt.UTC)
     path = write_data_file({"players": pd.DataFrame({"p_id": [1]})}, tmp_path / "data.sqlite", exported_at=when)
     first = load_file(path)
-    assert (first.path, first.origin, first.exported_at) == (path, "file", when)
+    assert (first.path, first.origin, first.exported_at, first.environment) == (path, "file", when, "live")
     assert load_file(path).version == first.version
 
     write_data_file({"players": pd.DataFrame({"p_id": [1, 2, 3]})}, path)
@@ -107,8 +124,8 @@ def test_download_is_unpacked_and_readable(tmp_path):
     when = dt.datetime(2026, 10, 3, 6, 20, tzinfo=dt.UTC)
     server = FakeServer(_archive(tmp_path, exported=when))
     data = Downloads(tmp_path / "cache", server).load(URL)
-    assert data.origin == "download" and data.exported_at == when
-    assert data.path.parent == tmp_path / "cache" and data.path.is_file()
+    assert data.origin == "download" and data.exported_at == when and data.environment == "live"
+    assert data.path.parent.parent == tmp_path / "cache" and data.path.is_file()
     conn = sqlite3.connect(data.path)
     assert conn.execute("select count(*) from players").fetchone() == (2,)
     conn.close()
@@ -139,7 +156,17 @@ def test_new_file_replaces_the_old_one(tmp_path):
     server.body, server.etag = _archive(tmp_path, "b", rows=5), '"v2"'
     second = downloads.load(URL)
     assert second.version != first.version and second.path != first.path
-    assert [p.name for p in (tmp_path / "cache").iterdir()] == [second.path.name]  # the old copy is removed
+    assert [p.name for p in second.path.parent.iterdir()] == [second.path.name]  # the old copy is removed
+
+
+def test_live_and_dev_downloads_are_kept_apart(tmp_path):
+    """Two dashboards on one machine share the cache folder; neither removes the other's file."""
+    live = Downloads(tmp_path / "cache", FakeServer(_archive(tmp_path, "live"))).load(default_url())
+    dev_server = FakeServer(_archive(tmp_path, "dev", rows=4, environment="dev"))
+    dev = Downloads(tmp_path / "cache", dev_server).load(default_url("dev"))
+
+    assert (live.environment, dev.environment) == ("live", "dev")
+    assert live.path.is_file() and dev.path.is_file() and live.path.parent != dev.path.parent
 
 
 @pytest.mark.parametrize("problem", ["network", "server", "corrupt"])

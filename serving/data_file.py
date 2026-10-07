@@ -8,6 +8,10 @@ module is shared by the exporter, the dashboard and the tests.
 
 The file is attached under the name ``analytics``, so queries read
 ``analytics.players`` exactly as they would in the warehouse.
+
+There is one file per environment (live or dev, see
+``extraction/environment.py``): each has its own place on disk and its own
+branch to be published to, and records which environment it came from.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import json
 import os
 import shutil
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 
@@ -27,11 +32,21 @@ import pandas as pd
 FILE_NAME = "fpl_serving.sqlite"
 ARCHIVE_NAME = f"{FILE_NAME}.gz"
 DATA_DIR = Path(__file__).resolve().parent / "data"  # git-ignored
-DEFAULT_FILE = DATA_DIR / FILE_NAME
+LIVE = "live"
 
-# The branch the archive is published to, and where the hosted dashboard
-# downloads it from (see serving/publish_data.py).
-DATA_BRANCH = "data"
+
+def default_file(environment: str = LIVE) -> Path:
+    """Where the pipeline writes an environment's data file on this machine:
+    ``serving/data/`` for live, ``serving/data/<environment>/`` otherwise."""
+    folder = DATA_DIR if environment == LIVE else DATA_DIR / environment
+    return folder / FILE_NAME
+
+
+def data_branch(environment: str = LIVE) -> str:
+    """The branch an environment's archive is published to, and where the
+    hosted dashboard downloads it from (see serving/publish_data.py)."""
+    return "data" if environment == LIVE else f"data-{environment}"
+
 
 SCHEMA = "analytics"
 META_TABLE = "serving_meta"
@@ -123,9 +138,14 @@ def normalise(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def write_data_file(
-    frames: dict[str, pd.DataFrame], path: Path = DEFAULT_FILE, exported_at: dt.datetime | None = None
+    frames: dict[str, pd.DataFrame],
+    path: Path,
+    exported_at: dt.datetime | None = None,
+    environment: str = LIVE,
+    database: str = "",
 ) -> Path:
-    """Write ``frames`` (table name -> rows) as the data file at ``path``.
+    """Write ``frames`` (table name -> rows) as the data file at ``path``,
+    recording the ``environment`` and ``database`` they were exported from.
 
     It is built next to ``path`` and moved into place at the end, so a
     dashboard reading the old file never sees a half-written one."""
@@ -152,6 +172,8 @@ def write_data_file(
             [
                 ("format_version", str(FORMAT_VERSION)),
                 ("exported_at", exported_at.strftime(DATETIME_FORMAT)),
+                ("environment", environment),
+                ("database", database),
                 ("row_counts", json.dumps(counts)),
             ],
         )
@@ -177,7 +199,7 @@ def _replace(source: Path, target: Path, attempts: int = 10) -> None:
             time.sleep(0.5)
 
 
-def compress(path: Path = DEFAULT_FILE) -> Path:
+def compress(path: Path) -> Path:
     """Gzip ``path`` next to itself (``fpl_serving.sqlite.gz``), for publishing."""
     path = Path(path)
     archive = path.with_name(f"{path.name}.gz")
@@ -208,8 +230,9 @@ def connect(path: Path) -> sqlite3.Connection:
 
 
 def read_meta(path: Path) -> dict[str, str]:
-    """The file's metadata (``exported_at``, ``format_version``, ``row_counts``).
-    Raises ValueError if ``path`` isn't a data file."""
+    """The file's metadata (``exported_at``, ``environment``, ``database``,
+    ``format_version``, ``row_counts``). Raises ValueError if ``path`` isn't
+    a data file."""
     try:
         conn = connect(path)
         try:
@@ -219,6 +242,18 @@ def read_meta(path: Path) -> dict[str, str]:
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"{path} isn't a dashboard data file: {exc}") from exc
     return dict(rows)
+
+
+def environment_of(meta: dict[str, str]) -> str:
+    """The environment a file was exported from (files written before
+    environments existed were all live)."""
+    return meta.get("environment") or LIVE
+
+
+def archive_meta(archive: Path) -> dict[str, str]:
+    """The metadata of a gzipped data file, without unpacking it for good."""
+    with tempfile.TemporaryDirectory(prefix="fpl-data-") as folder:
+        return read_meta(decompress(Path(archive).read_bytes(), Path(folder) / FILE_NAME))
 
 
 def exported_at(meta: dict[str, str]) -> dt.datetime | None:

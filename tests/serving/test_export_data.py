@@ -59,6 +59,12 @@ def test_export_writes_the_file_and_its_archive(tmp_path):
         conn.close()
 
 
+def test_export_is_stamped_with_its_environment(tmp_path):
+    file, _ = export(_warehouse(tmp_path, TABLES), tmp_path / "fpl_serving.sqlite", "dev", "fpl_dev")
+    meta = read_meta(file)
+    assert (meta["environment"], meta["database"]) == ("dev", "fpl_dev")
+
+
 @pytest.mark.parametrize(
     ("flag", "value", "expected"),
     [(True, "", True), (False, "1", True), (False, "TRUE", True), (False, "yes", True), (False, "0", False), (False, "", False)],

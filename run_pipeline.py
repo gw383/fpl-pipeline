@@ -3,6 +3,7 @@ the dashboard's data file.
 
     python run_pipeline.py              # ...and write the data file locally
     python run_pipeline.py --publish    # ...and publish it for the hosted dashboard
+    python run_pipeline.py --env dev    # the same, against the dev database
 
 The same command works on your PC (against a local SQL Server or the cloud
 database -- whatever ``.env`` points at) and in the scheduled GitHub
@@ -12,6 +13,13 @@ idle), and stops at the first step that fails.
 
 The last step (``serving/export_data.py``) copies the analytics tables the
 dashboard reads into one SQLite file, which is what the dashboard queries.
+
+There are two environments, live and dev (``extraction/environment.py``):
+each has its own database and its own published data file, so a change can
+be run end to end in dev without the live site seeing it. ``--env`` picks
+one (or set ``FPL_ENV``). On the ``main`` branch the default is live; on any
+other branch you have to say which, so work in progress can't update the
+live data by accident.
 
 dbt reads its connection from ``transformation/profiles/profiles.yml`` (the
 same ``FPL_DB_*`` variables) when ``FPL_DB_USER`` is set; with Windows
@@ -60,6 +68,51 @@ def run(step: str, command: list[str], cwd: Path, env: dict[str, str]) -> None:
         raise SystemExit(f"{step} failed (exit code {result.returncode}).")
 
 
+def current_branch(root: Path = ROOT) -> str | None:
+    """The git branch checked out, or None if that can't be told (no git, not
+    a checkout, a detached HEAD)."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return None
+    branch = result.stdout.strip()
+    return branch if result.returncode == 0 and branch and branch != "HEAD" else None
+
+
+def resolve_environment(flag: str | None, environ: dict[str, str], branch: str | None) -> str:
+    """Which environment this run updates: ``--env``, else ``FPL_ENV``, else
+    live -- but only on the main branch (or where the branch isn't known).
+    Anywhere else the choice has to be made explicitly."""
+    from environment import LIVE, current
+
+    if flag:
+        return flag
+    if environ.get("FPL_ENV"):
+        return current(environ)
+    if branch in (None, "main", "master"):
+        return LIVE
+    raise SystemExit(
+        f"You're on the '{branch}' branch, so say which data this run should update:\n"
+        "  python run_pipeline.py --env dev     the dev database and the dev site's data\n"
+        "  python run_pipeline.py --env live    the live database and the live site's data\n"
+        "(Setting FPL_ENV in .env makes one of them the default.)"
+    )
+
+
+def check_dbt_follows(environment: str, environ: dict[str, str]) -> None:
+    """dbt only follows FPL_ENV through the project's own profile, which is
+    used with a SQL login. With Windows authentication your ~/.dbt profile
+    is in charge and would build into its own (live) database."""
+    if environment != "live" and not environ.get("FPL_DB_USER") and not environ.get("DBT_PROFILES_DIR"):
+        raise SystemExit(
+            f"The {environment} environment needs a SQL login (FPL_DB_USER / FPL_DB_PASSWORD), so that dbt "
+            "builds into the same database as the rest of the pipeline. With Windows authentication dbt uses "
+            "your own ~/.dbt/profiles.yml, which doesn't know about environments."
+        )
+
+
 def export_command(python: str, publish: bool) -> list[str]:
     """The data-file step: export, and publish when asked."""
     return [python, "serving/export_data.py", *(["--publish"] if publish else [])]
@@ -70,17 +123,36 @@ def main() -> None:
     parser.add_argument(
         "--publish", action="store_true", help="publish the data file for the hosted dashboard when done"
     )
+    parser.add_argument(
+        "--env", choices=["live", "dev"], help="which database and data file to update (default: FPL_ENV, else live)"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     sys.path.insert(0, str(ROOT / "extraction"))
+    sys.path.insert(0, str(ROOT / "serving"))
     from dotenv import load_dotenv
 
     load_dotenv(ROOT / ".env")
-    from db import get_engine, wait_until_ready
+    from data_file import data_branch
+    from db import DbSettings, get_engine, wait_until_ready
 
+    try:
+        environment = resolve_environment(args.env, dict(os.environ), current_branch())
+        os.environ["FPL_ENV"] = environment  # every step below, and the settings read here, follow it
+        settings = DbSettings.from_env()
+    except ValueError as exc:  # FPL_ENV isn't live or dev, or dev is set to the live database
+        raise SystemExit(str(exc)) from exc
+    check_dbt_follows(environment, dict(os.environ))
+    logger.info(
+        "Environment: %s -> database %s on %s%s",
+        environment,
+        settings.database,
+        settings.server,
+        f", data file published to the '{data_branch(environment)}' branch" if args.publish else "",
+    )
     logger.info("Connecting to the database...")
-    wait_until_ready(get_engine())
+    wait_until_ready(get_engine(settings))
 
     env = dict(os.environ)
     python = sys.executable

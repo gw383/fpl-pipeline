@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- **A dev environment alongside live.** `FPL_ENV=dev` (or `python run_pipeline.py --env dev`) switches the whole pipeline to a second database (`<FPL_DB_NAME>_dev`) and a second data file (`serving/data/dev/`, published to the `data-dev` branch), and a dashboard with `FPL_ENV = "dev"` reads those and labels itself. Changes to the extraction, the dbt models or the projection model can be run end to end and checked on the dev site without the live site's data changing. On a branch other than `main`, `run_pipeline.py` asks which environment to update rather than assuming live; a data file records the environment it came from and can only be published to that environment's branch; the scheduled job updates live on `main` and dev when run by hand on another branch. Setup is in `docs/deployment.md`.
 - **A data file for the dashboard** (`serving/`). The last step of the pipeline (`run_pipeline.py`, the Airflow DAG) exports the analytics tables the dashboard reads into one SQLite file, `serving/data/fpl_serving.sqlite`. `--publish` (or `FPL_PUBLISH_DATA=1`) pushes a gzipped copy to the repository's `data` branch, replacing it each time so the repository doesn't grow.
 - Tests for every dashboard query, run against a data file built from a made-up league (`tests/dashboard/sample_data.py`) and checked against the same answer worked out in pandas. They need Streamlit, and are skipped where it isn't installed.
 
