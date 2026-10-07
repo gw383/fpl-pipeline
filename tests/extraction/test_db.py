@@ -47,5 +47,15 @@ def test_settings_from_env(monkeypatch):
     monkeypatch.setenv("FPL_DB_DRIVER", "PyMSSQL")
     monkeypatch.setenv("FPL_DB_TRUST_CERT", "no")
     monkeypatch.delenv("FPL_DB_PORT", raising=False)
+    monkeypatch.setenv("FPL_DB_NAME", "fpl")
+    monkeypatch.delenv("FPL_ENV", raising=False)
     s = DbSettings.from_env()
     assert s.is_azure and s.driver == "pymssql" and not s.trust_cert and s.port == 1433
+    assert s.database == "fpl"
+
+
+def test_dev_environment_connects_to_the_dev_database(monkeypatch):
+    monkeypatch.setenv("FPL_DB_NAME", "fpl")
+    monkeypatch.delenv("FPL_DB_NAME_DEV", raising=False)
+    monkeypatch.setenv("FPL_ENV", "dev")
+    assert DbSettings.from_env().database == "fpl_dev"

@@ -6,7 +6,9 @@ Community Cloud, from the app's secrets):
 
 ``FPL_DB_SERVER``      server name (default ``localhost``); for Azure SQL,
                        ``<name>.database.windows.net``
-``FPL_DB_NAME``        database (default ``FPL``)
+``FPL_DB_NAME``        database (default ``FPL``); with ``FPL_ENV=dev`` the
+                       dev copy, ``<name>_dev``, is used instead (see
+                       environment.py)
 ``FPL_DB_USER``        SQL login; leave unset for Windows authentication
 ``FPL_DB_PASSWORD``    its password
 ``FPL_DB_PORT``        port (default 1433)
@@ -32,6 +34,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.pool import NullPool
 
+from environment import database_name
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -54,7 +58,7 @@ class DbSettings:
     def from_env(cls) -> DbSettings:
         return cls(
             server=os.getenv("FPL_DB_SERVER") or "localhost",
-            database=os.getenv("FPL_DB_NAME") or "FPL",
+            database=database_name(),
             user=os.getenv("FPL_DB_USER") or None,
             password=os.getenv("FPL_DB_PASSWORD") or "",
             port=int(os.getenv("FPL_DB_PORT") or 1433),

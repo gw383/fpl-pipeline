@@ -3,6 +3,10 @@
 # authentication). run_pipeline.py uses it automatically when FPL_DB_USER is
 # set; with Windows authentication it leaves your own ~/.dbt/profiles.yml in
 # charge. To use it by hand: DBT_PROFILES_DIR=profiles dbt build
+#
+# The database follows FPL_ENV like the rest of the pipeline (see
+# extraction/environment.py): FPL_DB_NAME when live, and the dev copy
+# (FPL_DB_NAME_DEV, or FPL_DB_NAME + "_dev") when FPL_ENV=dev.
 fpl_pipeline:
   target: env
   outputs:
@@ -11,7 +15,7 @@ fpl_pipeline:
       driver: "ODBC Driver 18 for SQL Server"
       server: "{{ env_var('FPL_DB_SERVER') }}"
       port: "{{ env_var('FPL_DB_PORT', '1433') | as_number }}"
-      database: "{{ env_var('FPL_DB_NAME', 'FPL') }}"
+      database: "{{ (env_var('FPL_DB_NAME_DEV', '') or (env_var('FPL_DB_NAME', 'FPL') ~ '_dev')) if (env_var('FPL_ENV', 'live') | trim | lower) == 'dev' else env_var('FPL_DB_NAME', 'FPL') }}"
       schema: raw
       user: "{{ env_var('FPL_DB_USER') }}"
       password: "{{ env_var('FPL_DB_PASSWORD') }}"

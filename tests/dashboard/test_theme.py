@@ -2,7 +2,14 @@
 
 import pytest
 
-from theme import DIFFICULTY_COLOURS, TEXT_PRIMARY, difficulty_colour, readable_text_colour, rgba
+from theme import (
+    DIFFICULTY_COLOURS,
+    TEXT_PRIMARY,
+    difficulty_colour,
+    environment_badge_html,
+    readable_text_colour,
+    rgba,
+)
 
 
 class TestDifficultyColour:
@@ -29,3 +36,9 @@ class TestReadableTextColour:
 
 def test_rgba():
     assert rgba("#2a78d6", 0.1) == "rgba(42, 120, 214, 0.1)"
+
+
+def test_environment_badge_names_the_environment_and_stays_out_of_the_way():
+    badge = environment_badge_html("dev")
+    assert "dev data" in badge and "position:fixed" in badge
+    assert "pointer-events:none" in badge  # never blocks a tap on what's underneath

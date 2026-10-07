@@ -10,6 +10,10 @@ be awake while the pipeline runs.
 
 Setting ``FPL_PUBLISH_DATA=1`` publishes without the flag (for schedulers
 that can't pass arguments).
+
+With ``FPL_ENV=dev`` it reads the dev database and writes (and publishes)
+the dev data file instead: ``serving/data/dev/``, and the ``data-dev``
+branch. The live file is never touched from the dev environment.
 """
 
 from __future__ import annotations
@@ -28,7 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "extraction"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from data_file import DEFAULT_FILE, OPTIONAL_TABLES, SCHEMA, TABLES, compress, write_data_file  # noqa: E402
+from data_file import OPTIONAL_TABLES, SCHEMA, TABLES, compress, default_file, write_data_file  # noqa: E402
+from environment import LIVE, current  # noqa: E402
 
 logger = logging.getLogger("export_data")
 
@@ -51,9 +56,9 @@ def read_tables(engine: Engine) -> dict[str, pd.DataFrame]:
     return frames
 
 
-def export(engine: Engine, path: Path = DEFAULT_FILE) -> tuple[Path, Path]:
+def export(engine: Engine, path: Path, environment: str = LIVE, database: str = "") -> tuple[Path, Path]:
     """Write the data file and its gzipped copy; returns both paths."""
-    file = write_data_file(read_tables(engine), path)
+    file = write_data_file(read_tables(engine), path, environment=environment, database=database)
     archive = compress(file)
     logger.info(
         "Wrote %s (%.1f MB) and %s (%.1f MB)",
@@ -72,7 +77,7 @@ def publish_requested(flag: bool, environ: dict[str, str] | None = None) -> bool
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--output", type=Path, default=DEFAULT_FILE, help="where to write the data file")
+    parser.add_argument("--output", type=Path, help="where to write the data file (default: serving/data/)")
     parser.add_argument("--publish", action="store_true", help="also publish it for the hosted dashboard")
     args = parser.parse_args()
 
@@ -80,16 +85,19 @@ def main() -> None:
     from dotenv import load_dotenv
 
     load_dotenv(ROOT / ".env")
-    from db import get_engine, wait_until_ready
+    from db import DbSettings, get_engine, wait_until_ready
 
-    engine = get_engine()
+    environment = current()
+    settings = DbSettings.from_env()
+    logger.info("Environment: %s (database %s)", environment, settings.database)
+    engine = get_engine(settings)
     wait_until_ready(engine)
-    _, archive = export(engine, args.output)
+    _, archive = export(engine, args.output or default_file(environment), environment, settings.database)
 
     if publish_requested(args.publish):
         from publish_data import publish
 
-        publish(archive)
+        publish(archive, environment=environment)
 
 
 if __name__ == "__main__":

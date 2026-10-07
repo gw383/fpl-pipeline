@@ -15,6 +15,7 @@ The code is already prepared for this:
 
 - **`run_pipeline.py`** runs extract → `dbt build` → projection model → data file in one command, on your PC or in GitHub Actions. It waits for a paused database to wake up first. `--publish` also publishes the data file.
 - **`serving/`** exports the data file (`export_data.py`) and publishes it (`publish_data.py`).
+- **`extraction/environment.py`** is the live/dev switch (`FPL_ENV`): a second database and data file for testing changes, set up in [A test version](#a-test-version-with-its-own-data) below.
 - **`extraction/db.py`** reads the `FPL_DB_*` settings for everything. It supports Azure SQL and two drivers: Microsoft's ODBC driver (your PC, GitHub Actions) and `pymssql` (the hosted dashboard, which can't install the ODBC driver).
 - **`transformation/profiles/profiles.yml`** is a dbt profile built from the same settings, used automatically when `FPL_DB_USER` is set.
 - **`dashboard/requirements.txt`** holds the hosted dashboard's packages. Streamlit Cloud reads it instead of the full list.
@@ -140,17 +141,60 @@ The pages themselves need none of those secrets: they read the published data fi
 
 Secrets can be changed later under the app's **Settings → Secrets**. The app redeploys by itself whenever `main` changes on GitHub. A new data file doesn't need a redeploy: the app checks for one every 15 minutes.
 
-### A test version
+### A test version, with its own data
 
-A second app deployed from another branch (e.g. `dev`, with the same secrets) is a place to try changes before they reach the live site. Both read the same published data file, so the test app only reads the live site's data. The exception is a new manager looked up on My Team: either app saves them to the same database, and the next refresh adds them to the file.
+A second app deployed from the `dev` branch is a place to try changes before they reach the live site. It has its own database and its own data file, so a change to the extraction, the dbt models or the projection model can be run end to end and looked at on the dev site while the live site carries on showing the live data.
+
+| | Live | Dev |
+|---|---|---|
+| Site | the app deployed from `main` | the app deployed from `dev`, with `FPL_ENV = "dev"` in its secrets |
+| Database | `fpl` | `fpl_dev`, on the same server |
+| Data file | the `data` branch | the `data-dev` branch |
+| Updated by | the daily job, or `python run_pipeline.py --env live --publish` | `python run_pipeline.py --env dev --publish`, or the job run by hand on the `dev` branch |
+
+One setting, `FPL_ENV`, switches all of it. Nothing else differs: same server, same logins, same code path. The dev database's name is the live one plus `_dev` (set `FPL_DB_NAME_DEV` for a different name).
+
+**Setting it up (once, about 30 minutes, mostly waiting):**
+
+1. **Create the dev database.** In the Azure portal, search for **SQL databases** and click **Create**. Apply the free offer again (each free database has its own monthly allowance, and a subscription can have ten). Then:
+   - **Database name:** `fpl_dev`.
+   - **Server:** pick the existing one (`fpl-warehouse-george`), not *Create new*. The firewall rule and the admin login come with it.
+   - **Behaviour when the free limit is reached:** *Auto-pause the database until next month*.
+2. **Fill it and publish its data file.** From `C:\fpl-pipeline`, on the `dev` branch, with `.env` unchanged (still naming the live database; the dev name is worked out from it):
+
+   ```
+   python run_pipeline.py --env dev --publish
+   ```
+
+   The first line it logs says which database it is using. As with the live database, the first run is the long one.
+3. **Create the dashboard's login in it.** Open the **`fpl_dev`** database in the portal, go to **Query editor**, and run `deploy/azure_setup.sql` there with the **same password** you gave `fpl_web` in the live database, so one set of secrets works for both.
+4. **Tell the dev app it is the dev one.** On [share.streamlit.io](https://share.streamlit.io), open the dev app's **Settings → Secrets**, add this line to what is already there, and save:
+
+   ```toml
+   FPL_ENV = "dev"
+   ```
+
+   The app restarts and shows an orange **DEV DATA** label in the corner, so it can't be mistaken for the live site.
+5. **Update the workflow file** so the job can run against dev too: on the `dev` branch, `copy deploy\daily-refresh.yml .github\workflows\daily-refresh.yml`, then commit and push. It reaches `main` with your next merge.
+
+**Testing a change:**
+
+- *The dashboard only:* push to `dev`. The dev site redeploys and shows it, on the dev data.
+- *The data or the logic behind it:* on the `dev` branch, run `python run_pipeline.py --env dev --publish`. That rebuilds the dev database with your version of the code and publishes the result; the dev site picks it up within 15 minutes (straight away if you reboot the app). The same thing without your PC: **Actions → Daily refresh → Run workflow**, and choose the `dev` branch.
+- *Happy with it:* merge `dev` into `main`. The live site's code updates at once; the live *data* is rebuilt with the new logic at the next daily refresh, or straight away with **Run workflow** on `main`.
+
+Two things guard against mixing them up. On any branch other than `main`, `run_pipeline.py` won't start without `--env` (or `FPL_ENV`), so a half-finished change can't quietly rewrite the live data. And a data file is stamped with the environment it was exported from, and is only ever published to that environment's branch.
+
+The dev data is only as fresh as the last dev run (the footer says when), since the daily job refreshes live only. To look at the dev data on your PC, set the variable before starting the dashboard: `$env:FPL_ENV = "dev"` in PowerShell, then `streamlit run app.py`.
 
 ---
 
 ## Day to day
 
 - **Nothing to do.** GitHub refreshes the data each morning and the site shows it. The footer of every page says when the data was last refreshed.
-- **Changing the code:** commit and push to `main` and the site updates within a minute or two.
-- **Changing what the dashboard reads:** a page that needs a new table or column needs it in the data file too. New tables go in `TABLES` in `serving/data_file.py`; then run the pipeline (or `python serving/export_data.py --publish`) before the dashboard change goes live.
+- **Changing the code:** commit and push to `main` and the site updates within a minute or two. To try it first, use the [test version](#a-test-version-with-its-own-data).
+- **Running the pipeline by hand:** on `main`, `python run_pipeline.py --publish` updates live. On any other branch it asks for `--env dev` or `--env live`.
+- **Changing what the dashboard reads:** a page that needs a new table or column needs it in the data file too. New tables go in `TABLES` in `serving/data_file.py`. Try it in dev first; when it's merged, run the daily job on `main` straight away (**Actions → Daily refresh → Run workflow**) so the live data file gains the new table before many people see the page.
 - **After a quiet spell:** the first visitor may see Streamlit's "wake up" button. That is the free hosting pausing, not a fault. The pages no longer wait for the database.
 - **Looking up a new manager** on My Team can take up to a minute, while the database wakes up.
 - **Your PC:** `streamlit run app.py` and the launchers still work. They read the data file your last local pipeline run wrote (`serving/data/`), or the published one if there isn't one.
@@ -160,10 +204,14 @@ A second app deployed from another branch (e.g. `dev`, with the same secrets) is
 
 | Symptom | Likely cause |
 |---|---|
-| The site says "The dashboard has no data to show yet" with HTTP 404 | Nothing has been published to the `data` branch yet. Run `python run_pipeline.py --publish` (or `python serving/export_data.py --publish`) once |
+| The site says "The dashboard has no data to show yet" with HTTP 404 | Nothing has been published to the `data` branch yet. Run `python run_pipeline.py --publish` (or `python serving/export_data.py --publish`) once. On the dev site it is the `data-dev` branch: `python run_pipeline.py --env dev --publish` |
+| `run_pipeline.py` stops with "say which data this run should update" | You're on a branch other than `main`. Add `--env dev` (or `--env live` if you mean it) |
+| `Cannot open database "fpl_dev" requested by the login` | The dev database doesn't exist yet, or has another name (set `FPL_DB_NAME_DEV`) |
+| "was exported from the dev environment, but this is the live environment" | A data file is being published from the wrong environment. Export again with the same `--env` you publish with |
+| The dev site has no orange DEV DATA label | Its secrets lack `FPL_ENV = "dev"`, so it is reading the live data file |
 | The footer's "data refreshed" time is days old | The daily refresh is failing or not publishing. Check the latest run under **Actions → Daily refresh** |
 | The publish step fails with "Permission denied" or 403 in GitHub Actions | The workflow file lacks `permissions: contents: write`, or the repository's workflow permissions are read-only |
-| `Login failed for user` | Wrong login/password, or (for `fpl_web`) the setup script wasn't run in the `fpl` database |
+| `Login failed for user` | Wrong login/password, or (for `fpl_web`) the setup script wasn't run in that database (`fpl`, and `fpl_dev` for the dev site) |
 | `Cannot open server ... requested by the login` / timeouts from GitHub or Streamlit | The `AllowAll` firewall rule is missing (step 1.5) |
 | Error 40613, "database not currently available" (pipeline, or a My Team lookup) | The database is resuming; wait a minute and retry |
 | Streamlit app: `pymssql` connection errors mentioning TLS/encryption | The pymssql driver couldn't negotiate encryption with Azure. Tell me the exact error; the fallback is a different driver |

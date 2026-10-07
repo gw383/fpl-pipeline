@@ -9,10 +9,15 @@ import pandas as pd
 import pytest
 
 from data_file import (
+    DATA_DIR,
     FORMAT_VERSION,
+    archive_meta,
     compress,
     connect,
+    data_branch,
     decompress,
+    default_file,
+    environment_of,
     exported_at,
     has_table,
     normalise,
@@ -118,6 +123,21 @@ def test_metadata_records_when_and_what(tmp_path):
     assert int(meta["format_version"]) == FORMAT_VERSION
     assert exported_at(meta) == when
     assert json.loads(meta["row_counts"]) == {"players": 2, "gameweeks": 2}
+
+
+def test_each_environment_has_its_own_file_and_branch():
+    assert default_file() == DATA_DIR / "fpl_serving.sqlite" and data_branch() == "data"
+    assert default_file("dev") == DATA_DIR / "dev" / "fpl_serving.sqlite" and data_branch("dev") == "data-dev"
+
+
+def test_file_records_the_environment_and_database_it_came_from(tmp_path):
+    path = write_data_file(_frames(), tmp_path / "data.sqlite", environment="dev", database="fpl_dev")
+    meta = read_meta(path)
+    assert (environment_of(meta), meta["database"]) == ("dev", "fpl_dev")
+    assert archive_meta(compress(path)) == meta
+    # Unless told otherwise a file is live, as are files written before environments existed.
+    assert environment_of(read_meta(write_data_file(_frames(), tmp_path / "live.sqlite"))) == "live"
+    assert environment_of({"format_version": "1"}) == "live"
 
 
 def test_rewriting_replaces_the_file_and_leaves_nothing_behind(tmp_path):
