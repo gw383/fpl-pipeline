@@ -11,7 +11,7 @@
 -- first pipeline run (python run_pipeline.py --env dev), with the SAME
 -- password, so the live and dev sites can share their database secrets.
 
-CREATE USER fpl_web WITH PASSWORD = 'xAuFnnasuwjF33191824LLLLO!';
+CREATE USER fpl_web WITH PASSWORD = 'CHANGE-ME-to-a-long-password-1!';
 ALTER ROLE db_datareader ADD MEMBER fpl_web;
 GO
 
