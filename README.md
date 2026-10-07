@@ -14,6 +14,7 @@ I built this to work through the problems a real data pipeline has to solve — 
 - **Layered dbt project** — `raw → stg → analytics`, 22 models with documentation and data tests (keys, relationships, accepted values), an incremental fact table and reusable macros.
 - **An expected-points projection model** — team attack/defence ratings, opponent-adjusted open-play xG/xA rates with shrinkage, penalties modelled as a role for designated takers, priors from previous seasons and prices, and a minutes/availability model combine into predicted FPL points for every fixture. It is **backtested** against actual points and beats form-based baselines. [Methodology and results →](docs/rating_methodology.md)
 - **A serving layer for the dashboard** — after each run the pipeline exports the analytics tables the dashboard reads into one small SQLite file. The dashboard queries that file, so a page view never waits on the warehouse.
+- **Separate dev and live environments** — the hosted site has a dev copy with its own database and its own data file, so a change to the ingestion, the dbt models or the projection model can be run end to end and checked before the live site's data changes. One setting switches all of it.
 - **Orchestrated with Airflow in Docker**, plus one-click desktop launchers.
 - **Six-page Streamlit dashboard** — player deep dives, head-to-head comparisons, team form, leaderboards and a personal FPL squad view.
 - **CI** — linting, unit tests and `dbt parse` on every push.
@@ -74,6 +75,44 @@ See [docs/data_model.md](docs/data_model.md) for the lineage and schema diagrams
 | Teams | Results over a chosen range ranked against the league, form guide, scorers and xG/xA/xGA per match |
 | Rankings | Sortable, searchable expected-points table per position: next gameweek, next five, minutes, where the points come from, points per £m |
 | My Team | Any manager's squad with expected points, captaincy, bench, budget and transfers. Enter an FPL ID: saved managers load straight from the data file, new ones are fetched from the API, ingested and shown |
+
+## Development and live environments
+
+The hosted site runs twice: the live one people use, and a dev copy for trying changes. They share the code and the database server, but nothing that holds data.
+
+| | Live | Dev |
+|---|---|---|
+| Git branch | `main` | `dev` |
+| Warehouse | `fpl` | `fpl_dev` |
+| Dashboard data file | published to the `data` branch | published to the `data-dev` branch |
+| Refreshed | every morning, by the scheduled job | on demand, when there is a change to test |
+
+```mermaid
+flowchart LR
+    devbranch[dev branch] -->|"run_pipeline.py --env dev"| devdb[(fpl_dev)]
+    devdb --> devfile[data-dev branch]
+    devfile --> devsite([dev site])
+    devbranch -->|merge when happy| mainbranch[main branch]
+    mainbranch -->|daily scheduled run| livedb[(fpl)]
+    livedb --> livefile[data branch]
+    livefile --> livesite([live site])
+```
+
+A single setting, `FPL_ENV` (or `python run_pipeline.py --env dev` for one run), selects the environment for every step at once. Extraction, dbt, the projection model, the export and the dashboard all work out their database and data file from it ([`extraction/environment.py`](extraction/environment.py)), so they can't end up pointing at different places.
+
+A change moves through like this:
+
+1. Work on the `dev` branch and run the pipeline with `--env dev`. That rebuilds the dev warehouse with the new code and publishes the dev data file.
+2. Check the result on the dev site, which labels itself so it can't be mistaken for the live one.
+3. Merge `dev` into `main`. The live site picks up the code straight away, and the next scheduled run rebuilds the live data with it.
+
+Three guards keep the two apart:
+
+- On any branch other than `main`, the pipeline won't start until it is told which environment to update, so unfinished work can't rewrite the live data by default.
+- Every data file records the environment it was exported from, and publishing refuses to push it to the other environment's branch.
+- The dev database can't be set to the same database as the live one.
+
+Setting it up is covered in [docs/deployment.md](docs/deployment.md#a-test-version-with-its-own-data).
 
 ## Project structure
 
@@ -161,7 +200,7 @@ Later gameweeks are discounted (`--discount`, default 0.9 for a wildcard, 0.85 f
 
 The dashboard can run on Streamlit Community Cloud with an Azure SQL database, refreshed daily by GitHub Actions, all on free tiers. [docs/deployment.md](docs/deployment.md) walks through it step by step.
 
-There are two environments, live and dev. Each has its own database and its own published data file, and one setting (`FPL_ENV`) switches between them, so a change to the pipeline or the model can be run end to end and checked on a dev copy of the site before it touches what the live site shows.
+It runs as two environments, live and dev, each with its own database and data file: see [Development and live environments](#development-and-live-environments).
 
 ### Orchestrating with Airflow (optional)
 
@@ -210,6 +249,7 @@ cd transformation && dbt test   # data tests against the warehouse
 - **Late data corrections.** FPL can revise a finished gameweek's stats for a day or two; the ingestion grace window and the `player_points` lookback exist so those corrections are always picked up.
 - **Double gameweeks.** The live endpoint returns one combined row per player per gameweek, so double gameweeks can't be split by match; the models flag them rather than guess.
 - **Serving from a file, not the warehouse.** The hosted dashboard first queried Azure SQL on every page view, from servers on another continent, against a serverless database that pauses when idle: slow at best and a minute's wait at worst. The data changes once a day, so the pipeline now exports it to a SQLite file that the dashboard downloads and queries locally. The queries stayed SQL (ported from T-SQL to SQLite and tested against a sample file), and the warehouse only has to be awake while the pipeline runs.
+- **Testing data changes without touching live.** A second copy of the site on a `dev` branch was enough to preview a layout change, but it read the same database and data file as the live site, so the only way to see a new model's numbers on a page was to overwrite the live ones. The pipeline now has a dev environment with its own database and data file. The risk with two environments is a run that mixes them (extracting into one database and building dbt in the other) or updates the wrong one, so a single setting drives every step, the dbt profile applies the same rule as the Python code with a test that checks they agree, and the pipeline asks which environment to update whenever it isn't on `main`.
 - **On-demand ingestion.** The My Team page can pull in any manager by ID. It reuses the extraction code rather than a second copy, replaces only that manager's rows in one transaction, and the manager models are dbt *views*, so the new data appears in the warehouse without waiting for a dbt run. The page reads that manager from the warehouse until the next run adds them to the data file. Looked-up managers are then refreshed by the daily pipeline.
 - **Season boundaries.** "Current season" is resolved from the `seasons` seed by date, so the whole warehouse rolls over by adding one row.
 
