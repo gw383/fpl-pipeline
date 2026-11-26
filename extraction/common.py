@@ -125,6 +125,45 @@ def table_exists(conn: Connection, table_name: str) -> bool:
     return inspect(conn).has_table(table_name, schema=RAW_SCHEMA)
 
 
+def new_columns(columns: list[str], existing: set[str]) -> list[str]:
+    """``columns`` the table doesn't have yet (SQL Server compares names
+    without regard to case)."""
+    known = {name.lower() for name in existing}
+    return [name for name in columns if name.lower() not in known]
+
+
+def sql_type_for(values: pd.Series) -> str:
+    """A SQL Server column type for a new column, as ``to_sql`` would have
+    chosen when it created the table."""
+    if pd.api.types.is_bool_dtype(values):
+        return "BIT"
+    if pd.api.types.is_integer_dtype(values):
+        return "BIGINT"
+    if pd.api.types.is_float_dtype(values):
+        return "FLOAT"
+    if pd.api.types.is_datetime64_any_dtype(values):
+        return "DATETIME2"
+    return "NVARCHAR(max)"
+
+
+def add_new_columns(conn: Connection, df: pd.DataFrame, table_name: str) -> list[str]:
+    """Add any of ``df``'s columns that ``raw.<table_name>`` lacks.
+
+    The FPL API adds fields from time to time (``can_auto_sub_in`` and
+    ``can_auto_sub_out`` in November 2026). The raw tables keep whatever the
+    API sends, so a new field becomes a new, nullable column rather than
+    failing the load; older rows are NULL in it. Nothing downstream reads a
+    column until a dbt model is changed to.
+    """
+    existing = {column["name"] for column in inspect(conn).get_columns(table_name, schema=RAW_SCHEMA)}
+    added = new_columns(list(df.columns), existing)
+    for name in added:
+        quoted = "[" + name.replace("]", "]]") + "]"
+        conn.execute(text(f"ALTER TABLE {RAW_SCHEMA}.{table_name} ADD {quoted} {sql_type_for(df[name])} NULL"))
+        logger.warning("raw.%s: the API has a new field '%s'; added it as a column", table_name, name)
+    return added
+
+
 def replace_partition(
     conn: Connection,
     df: pd.DataFrame,
@@ -136,10 +175,12 @@ def replace_partition(
     ``raw.<table_name>`` with ``df``.
 
     Runs on the caller's connection so several tables can share a single
-    transaction. The table is created by ``to_sql`` on first load.
+    transaction. The table is created by ``to_sql`` on first load; fields the
+    API adds later are added to it as new columns (see ``add_new_columns``).
     """
     deleted = 0
     if table_exists(conn, table_name):
+        add_new_columns(conn, prepare_for_load(df), table_name)
         where = "season = :season"
         params: dict[str, Any] = {"season": season}
         if gameweek is not None:
