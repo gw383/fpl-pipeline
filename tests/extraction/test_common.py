@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from common import GRACE_GAMEWEEKS, _gameweeks_needing_fetch, convert_nested_to_json
+from common import GRACE_GAMEWEEKS, _gameweeks_needing_fetch, convert_nested_to_json, new_columns, sql_type_for
 
 
 class TestConvertNestedToJson:
@@ -53,3 +53,25 @@ class TestGameweeksNeedingFetch:
 
     def test_preserves_input_order(self):
         assert _gameweeks_needing_fetch([5, 1, 3], ingested=set(), checked={}) == [5, 1, 3]
+
+
+class TestNewColumns:
+    def test_fields_the_table_lacks_are_found_in_order(self):
+        columns = ["id", "stats.minutes", "stats.can_auto_sub_out", "stats.can_auto_sub_in"]
+        existing = {"id", "stats.minutes"}
+        assert new_columns(columns, existing) == ["stats.can_auto_sub_out", "stats.can_auto_sub_in"]
+
+    def test_names_are_compared_without_case(self):
+        assert new_columns(["ID", "Season"], {"id", "season"}) == []
+
+    def test_nothing_new(self):
+        assert new_columns([], {"id"}) == []
+
+
+class TestSqlTypeFor:
+    def test_types_match_what_to_sql_creates(self):
+        assert sql_type_for(pd.Series([True, False])) == "BIT"
+        assert sql_type_for(pd.Series([1, 2])) == "BIGINT"
+        assert sql_type_for(pd.Series([1.5, None])) == "FLOAT"
+        assert sql_type_for(pd.Series(pd.to_datetime(["2026-11-26"]))) == "DATETIME2"
+        assert sql_type_for(pd.Series(["0.36", "1.2"])) == "NVARCHAR(max)"
